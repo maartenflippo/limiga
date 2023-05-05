@@ -1,4 +1,4 @@
-use crate::{domains::Domain, variables::Variable};
+use crate::variables::Variable;
 
 use super::{PropagationResult, Propagator};
 
@@ -42,14 +42,10 @@ where
     VX: Variable<VStore, Value = Value>,
     VY: Variable<VStore, Value = Value>,
 {
-    let value_to_remove = {
-        let a_dom = a.domain(&*store);
-        a_dom.fixed_value().cloned()
-    };
+    let value_to_remove = a.fixed_value(store).cloned();
 
     if let Some(value) = value_to_remove {
-        let b_dom = b.domain_mut(&mut *store);
-        b_dom.remove(&value).into()
+        b.remove(store, &value).into()
     } else {
         PropagationResult::Consistent
     }
@@ -57,6 +53,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::domains::Domain;
+
     use super::*;
 
     #[test]
@@ -113,11 +111,11 @@ mod tests {
             self.is_empty()
         }
 
-        fn set_max(&mut self, _value: &Self::Value) {
+        fn set_max(&mut self, _value: &Self::Value) -> bool {
             todo!()
         }
 
-        fn set_min(&mut self, _value: &Self::Value) {
+        fn set_min(&mut self, _value: &Self::Value) -> bool {
             todo!()
         }
     }
@@ -125,14 +123,34 @@ mod tests {
     impl Variable<Vec<Vec<i64>>> for usize {
         type Value = i64;
 
-        type Dom = Vec<i64>;
-
-        fn domain<'store>(&self, store: &'store Vec<Vec<i64>>) -> &'store Self::Dom {
-            &store[*self]
+        fn min<'store>(&self, store: &'store Vec<Vec<i64>>) -> &'store Self::Value {
+            let dom = &store[*self];
+            <Vec<i64> as Domain>::min(&dom)
         }
 
-        fn domain_mut<'store>(&self, store: &'store mut Vec<Vec<i64>>) -> &'store mut Self::Dom {
-            &mut store[*self]
+        fn max<'store>(&self, store: &'store Vec<Vec<i64>>) -> &'store Self::Value {
+            let dom = &store[*self];
+            <Vec<i64> as Domain>::max(&dom)
+        }
+
+        fn fixed_value<'store>(&self, store: &'store Vec<Vec<i64>>) -> Option<&'store Self::Value> {
+            let dom = &store[*self];
+            <Vec<i64> as Domain>::fixed_value(&dom)
+        }
+
+        fn remove(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
+            let dom = &mut store[*self];
+            <Vec<i64> as Domain>::remove(dom, value)
+        }
+
+        fn set_min(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
+            let dom = &mut store[*self];
+            <Vec<i64> as Domain>::set_min(dom, value)
+        }
+
+        fn set_max(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
+            let dom = &mut store[*self];
+            <Vec<i64> as Domain>::set_max(dom, value)
         }
     }
 }

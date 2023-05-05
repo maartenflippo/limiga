@@ -20,7 +20,7 @@ pub struct Solution<'solver> {
 }
 
 impl Solver {
-    pub fn new_int_var<Dom>(&mut self, domain: Dom) -> IntVar<Dom>
+    pub fn new_int_var<Dom>(&mut self, domain: Dom) -> IntVar<Dom, Domains>
     where
         Domains: DomainStore<Dom>,
     {
@@ -37,7 +37,7 @@ impl Solver {
 }
 
 impl<'solver> Solution<'solver> {
-    pub fn value<Var>(&self, variable: Var) -> &Var::Value
+    pub fn value<Var>(&self, variable: Var) -> Var::Value
     where
         Var: Variable<Domains>,
         Domains: DomainStore<Var::Dom>,

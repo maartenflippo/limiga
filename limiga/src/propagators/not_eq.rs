@@ -42,7 +42,7 @@ where
     VX: Variable<VStore, Value = Value>,
     VY: Variable<VStore, Value = Value>,
 {
-    let value_to_remove = a.fixed_value(store).cloned();
+    let value_to_remove = a.fixed_value(store);
 
     if let Some(value) = value_to_remove {
         b.remove(store, &value).into()
@@ -81,19 +81,19 @@ mod tests {
     impl Domain for Vec<i64> {
         type Value = i64;
 
-        fn fixed_value(&self) -> Option<&Self::Value> {
+        fn fixed_value(&self) -> Option<Self::Value> {
             if self.len() == 1 {
-                Some(&self[0])
+                Some(self[0])
             } else {
                 None
             }
         }
 
-        fn min(&self) -> &Self::Value {
+        fn min(&self) -> Self::Value {
             todo!()
         }
 
-        fn max(&self) -> &Self::Value {
+        fn max(&self) -> Self::Value {
             todo!()
         }
 
@@ -124,17 +124,17 @@ mod tests {
         type Value = i64;
         type Dom = Vec<i64>;
 
-        fn min<'store>(&self, store: &'store Vec<Vec<i64>>) -> &'store Self::Value {
+        fn min(&self, store: &Vec<Vec<i64>>) -> Self::Value {
             let dom = &store[*self];
             <Vec<i64> as Domain>::min(&dom)
         }
 
-        fn max<'store>(&self, store: &'store Vec<Vec<i64>>) -> &'store Self::Value {
+        fn max(&self, store: &Vec<Vec<i64>>) -> Self::Value {
             let dom = &store[*self];
             <Vec<i64> as Domain>::max(&dom)
         }
 
-        fn fixed_value<'store>(&self, store: &'store Vec<Vec<i64>>) -> Option<&'store Self::Value> {
+        fn fixed_value(&self, store: &Vec<Vec<i64>>) -> Option<Self::Value> {
             let dom = &store[*self];
             <Vec<i64> as Domain>::fixed_value(&dom)
         }

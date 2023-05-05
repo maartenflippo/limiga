@@ -12,13 +12,13 @@ pub trait Domain {
     type Value: PartialOrd;
 
     /// If the domain is singleton, return the value. Otherwise, return [`None`].
-    fn fixed_value(&self) -> Option<&Self::Value>;
+    fn fixed_value(&self) -> Option<Self::Value>;
 
     /// The lower bound of the domain.
-    fn min(&self) -> &Self::Value;
+    fn min(&self) -> Self::Value;
 
     /// The upper bound of the domain.
-    fn max(&self) -> &Self::Value;
+    fn max(&self) -> Self::Value;
 
     /// The number of elements in the domain. This is at most the difference between the upper and
     /// lower bound, but elements in between might be missing.

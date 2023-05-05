@@ -5,6 +5,8 @@ pub mod propagators;
 
 mod solver;
 mod variables;
+mod views;
 
 pub use solver::*;
 pub use variables::*;
+pub use views::*;

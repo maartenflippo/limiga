@@ -32,7 +32,7 @@ impl BitSetDomain {
 impl Domain for BitSetDomain {
     type Value = i64;
 
-    fn fixed_value(&self) -> Option<&Self::Value> {
+    fn fixed_value(&self) -> Option<Self::Value> {
         if self.size() == 1 {
             Some(self.min())
         } else {
@@ -40,12 +40,12 @@ impl Domain for BitSetDomain {
         }
     }
 
-    fn min(&self) -> &Self::Value {
-        &self.lower_bound
+    fn min(&self) -> Self::Value {
+        self.lower_bound
     }
 
-    fn max(&self) -> &Self::Value {
-        &self.upper_bound
+    fn max(&self) -> Self::Value {
+        self.upper_bound
     }
 
     fn size(&self) -> usize {
@@ -59,12 +59,12 @@ impl Domain for BitSetDomain {
         self.values.set(bit_idx, false);
         self.size -= usize::from(is_present);
 
-        if value == self.min() {
+        if *value == self.min() {
             while !self.values[bit_idx] {
                 self.lower_bound += 1;
                 bit_idx += 1;
             }
-        } else if value == self.max() {
+        } else if *value == self.max() {
             while !self.values[bit_idx] {
                 self.upper_bound -= 1;
                 bit_idx -= 1;
@@ -95,8 +95,8 @@ mod tests {
     fn new_bitset_domain_has_correct_properties() {
         let domain = BitSetDomain::new(1, 4);
 
-        assert_eq!(1, *domain.min());
-        assert_eq!(4, *domain.max());
+        assert_eq!(1, domain.min());
+        assert_eq!(4, domain.max());
         assert_eq!(4, domain.size());
         assert_eq!(None, domain.fixed_value());
     }
@@ -107,8 +107,8 @@ mod tests {
 
         domain.remove(&2);
 
-        assert_eq!(1, *domain.min());
-        assert_eq!(4, *domain.max());
+        assert_eq!(1, domain.min());
+        assert_eq!(4, domain.max());
         assert_eq!(3, domain.size());
     }
 
@@ -119,8 +119,8 @@ mod tests {
         domain.remove(&2);
         domain.remove(&1);
 
-        assert_eq!(3, *domain.min());
-        assert_eq!(4, *domain.max());
+        assert_eq!(3, domain.min());
+        assert_eq!(4, domain.max());
         assert_eq!(2, domain.size());
     }
 
@@ -131,8 +131,8 @@ mod tests {
         domain.remove(&3);
         domain.remove(&4);
 
-        assert_eq!(1, *domain.min());
-        assert_eq!(2, *domain.max());
+        assert_eq!(1, domain.min());
+        assert_eq!(2, domain.max());
         assert_eq!(2, domain.size());
     }
 
@@ -142,8 +142,8 @@ mod tests {
 
         domain.set_min(&3);
 
-        assert_eq!(3, *domain.min());
-        assert_eq!(4, *domain.max());
+        assert_eq!(3, domain.min());
+        assert_eq!(4, domain.max());
         assert_eq!(2, domain.size());
     }
 
@@ -153,8 +153,8 @@ mod tests {
 
         domain.set_max(&2);
 
-        assert_eq!(1, *domain.min());
-        assert_eq!(2, *domain.max());
+        assert_eq!(1, domain.min());
+        assert_eq!(2, domain.max());
         assert_eq!(2, domain.size());
     }
 }

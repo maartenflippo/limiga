@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::domains::{Domain, DomainId, DomainStore};
 
 pub trait Variable<Store> {
@@ -8,13 +10,13 @@ pub trait Variable<Store> {
     type Dom: Domain<Value = Self::Value>;
 
     /// Get the lower bound of the variable.
-    fn min<'store>(&self, store: &'store Store) -> &'store Self::Value;
+    fn min(&self, store: &Store) -> Self::Value;
 
     /// Get the upper bound of the variable.
-    fn max<'store>(&self, store: &'store Store) -> &'store Self::Value;
+    fn max(&self, store: &Store) -> Self::Value;
 
     /// Get the value if this variable has a singleton domain.
-    fn fixed_value<'store>(&self, store: &'store Store) -> Option<&'store Self::Value>;
+    fn fixed_value(&self, store: &Store) -> Option<Self::Value>;
 
     /// Remove the given value from this domain. If the domain becomes empty, this returns false.
     fn remove(&self, store: &mut Store, value: &Self::Value) -> bool;
@@ -26,9 +28,12 @@ pub trait Variable<Store> {
     fn set_max(&self, store: &mut Store, value: &Self::Value) -> bool;
 }
 
-pub struct IntVar<Dom>(DomainId<Dom>);
+pub struct IntVar<Dom, Store> {
+    domain: DomainId<Dom>,
+    store: PhantomData<Store>,
+}
 
-impl<Dom, Store> Variable<Store> for IntVar<Dom>
+impl<Dom, Store> Variable<Store> for IntVar<Dom, Store>
 where
     Dom: Domain<Value = i64> + 'static,
     Store: DomainStore<Dom>,
@@ -36,40 +41,46 @@ where
     type Value = i64;
     type Dom = Dom;
 
-    fn min<'store>(&self, store: &'store Store) -> &'store Self::Value {
-        store.read(self.0).min()
+    fn min(&self, store: &Store) -> Self::Value {
+        store.read(self.domain).min()
     }
 
-    fn max<'store>(&self, store: &'store Store) -> &'store Self::Value {
-        store.read(self.0).max()
+    fn max(&self, store: &Store) -> Self::Value {
+        store.read(self.domain).max()
     }
 
-    fn fixed_value<'store>(&self, store: &'store Store) -> Option<&'store Self::Value> {
-        store.read(self.0).fixed_value()
+    fn fixed_value(&self, store: &Store) -> Option<Self::Value> {
+        store.read(self.domain).fixed_value()
     }
 
     fn remove(&self, store: &mut Store, value: &Self::Value) -> bool {
-        store.read_mut(self.0).remove(value)
+        store.read_mut(self.domain).remove(value)
     }
 
     fn set_min(&self, store: &mut Store, value: &Self::Value) -> bool {
-        store.read_mut(self.0).set_min(value)
+        store.read_mut(self.domain).set_min(value)
     }
 
     fn set_max(&self, store: &mut Store, value: &Self::Value) -> bool {
-        store.read_mut(self.0).set_max(value)
+        store.read_mut(self.domain).set_max(value)
     }
 }
 
-impl<Dom> From<DomainId<Dom>> for IntVar<Dom> {
+impl<Dom, Store> From<DomainId<Dom>> for IntVar<Dom, Store> {
     fn from(value: DomainId<Dom>) -> Self {
-        IntVar(value)
+        IntVar {
+            domain: value,
+            store: PhantomData,
+        }
     }
 }
 
-impl<Dom> Clone for IntVar<Dom> {
+impl<Dom, Store> Clone for IntVar<Dom, Store> {
     fn clone(&self) -> Self {
-        IntVar(self.0)
+        IntVar {
+            domain: self.domain,
+            store: PhantomData,
+        }
     }
 }
-impl<Dom> Copy for IntVar<Dom> {}
+impl<Dom, Store> Copy for IntVar<Dom, Store> {}

@@ -1,3 +1,9 @@
+mod bitset;
+mod store;
+
+pub use bitset::*;
+pub use store::*;
+
 /// A domain describes the possible set of values for a variable. Domains must be finite, and the
 /// elements must form a partial order. As a consequence, each domain must have an upper and lower
 /// bound.

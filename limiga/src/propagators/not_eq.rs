@@ -122,6 +122,7 @@ mod tests {
 
     impl Variable<Vec<Vec<i64>>> for usize {
         type Value = i64;
+        type Dom = Vec<i64>;
 
         fn min<'store>(&self, store: &'store Vec<Vec<i64>>) -> &'store Self::Value {
             let dom = &store[*self];

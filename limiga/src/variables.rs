@@ -4,6 +4,9 @@ pub trait Variable<Store> {
     /// The type of the values for this variable.
     type Value: PartialOrd;
 
+    /// The type of domain is attached to this variable.
+    type Dom: Domain<Value = Self::Value>;
+
     /// Get the lower bound of the variable.
     fn min<'store>(&self, store: &'store Store) -> &'store Self::Value;
 
@@ -31,6 +34,7 @@ where
     Store: DomainStore<Dom>,
 {
     type Value = i64;
+    type Dom = Dom;
 
     fn min<'store>(&self, store: &'store Store) -> &'store Self::Value {
         store.read(self.0).min()

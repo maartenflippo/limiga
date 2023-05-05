@@ -29,8 +29,10 @@ pub trait Domain {
     fn remove(&mut self, value: &Self::Value) -> bool;
 
     /// Remove all values above the provided value, such that it is the upper bound of the domain.
-    fn set_max(&mut self, value: &Self::Value);
+    /// If the domain becomes empty, this returns false.
+    fn set_max(&mut self, value: &Self::Value) -> bool;
 
     /// Remove all values below the provided value, such that it is the lower bound of the domain.
-    fn set_min(&mut self, value: &Self::Value);
+    /// If the domain becomes empty, this returns false.
+    fn set_min(&mut self, value: &Self::Value) -> bool;
 }

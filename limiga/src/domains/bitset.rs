@@ -74,14 +74,16 @@ impl Domain for BitSetDomain {
         true
     }
 
-    fn set_max(&mut self, value: &Self::Value) {
+    fn set_max(&mut self, value: &Self::Value) -> bool {
         self.size -= self.upper_bound.abs_diff(*value) as usize;
         self.upper_bound = *value;
+        true
     }
 
-    fn set_min(&mut self, value: &Self::Value) {
+    fn set_min(&mut self, value: &Self::Value) -> bool {
         self.size -= value.abs_diff(self.lower_bound) as usize;
         self.lower_bound = *value;
+        true
     }
 }
 

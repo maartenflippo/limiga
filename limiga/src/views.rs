@@ -1,31 +1,33 @@
 use std::ops::{Add, Sub};
 
-use crate::Variable;
+use crate::{propagators::RegistrationContext, Variable};
 
 /// A view that offsets the domain of the inner variable by a constant amount. It models the
 /// constraint `x = y + c` where `x, y` are variables and `c` is a constant.
-pub struct OffsetView<Var, Store>
+pub struct OffsetView<Var, Store, DomainRegistrar>
 where
-    Var: Variable<Store>,
+    Var: Variable<Store, DomainRegistrar>,
 {
     inner: Var,
     offset: Var::Value,
 }
 
-impl<Var, Store> OffsetView<Var, Store>
+impl<Var, Store, DomainRegistrar> OffsetView<Var, Store, DomainRegistrar>
 where
-    Var: Variable<Store>,
+    Var: Variable<Store, DomainRegistrar>,
 {
     pub fn new(var: Var, offset: Var::Value) -> Self {
         OffsetView { inner: var, offset }
     }
 }
 
-impl<Var, Store> Variable<Store> for OffsetView<Var, Store>
+impl<Var, Store, DomainRegistrar> Variable<Store, DomainRegistrar>
+    for OffsetView<Var, Store, DomainRegistrar>
 where
-    Var: Variable<Store>,
+    Var: Variable<Store, DomainRegistrar>,
     for<'a> Var::Value: Add<&'a Var::Value, Output = Var::Value>,
     for<'a, 'b> &'a Var::Value: Sub<&'b Var::Value, Output = Var::Value>,
+    DomainRegistrar: RegistrationContext<Var::Dom>,
 {
     type Value = Var::Value;
     type Dom = Var::Dom;
@@ -58,11 +60,15 @@ where
         let value = value.sub(&self.offset);
         self.inner.set_max(store, &value)
     }
+
+    fn register(&self, registrar: &mut DomainRegistrar) {
+        self.inner.register(registrar);
+    }
 }
 
-impl<Var, Store> Clone for OffsetView<Var, Store>
+impl<Var, Store, DomainRegistrar> Clone for OffsetView<Var, Store, DomainRegistrar>
 where
-    Var: Variable<Store> + Clone,
+    Var: Variable<Store, DomainRegistrar> + Clone,
     Var::Value: Clone,
 {
     fn clone(&self) -> Self {
@@ -70,9 +76,9 @@ where
     }
 }
 
-impl<Var, Store> Copy for OffsetView<Var, Store>
+impl<Var, Store, DomainRegistrar> Copy for OffsetView<Var, Store, DomainRegistrar>
 where
-    Var: Variable<Store> + Clone + Copy,
+    Var: Variable<Store, DomainRegistrar> + Clone + Copy,
     Var::Value: Clone + Copy,
 {
 }

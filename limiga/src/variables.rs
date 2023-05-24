@@ -1,8 +1,11 @@
 use std::marker::PhantomData;
 
-use crate::domains::{Domain, DomainId, DomainStore};
+use crate::{
+    domains::{Domain, DomainId, DomainStore},
+    propagators::RegistrationContext,
+};
 
-pub trait Variable<Store> {
+pub trait Variable<Store, DomainRegistrar> {
     /// The type of the values for this variable.
     type Value: PartialOrd;
 
@@ -26,17 +29,23 @@ pub trait Variable<Store> {
 
     /// Set the upper bound for this variable.
     fn set_max(&self, store: &mut Store, value: &Self::Value) -> bool;
+
+    /// Register the domain IDs this variable depends on with the registrar.
+    fn register(&self, registrar: &mut DomainRegistrar);
 }
 
-pub struct IntVar<Dom, Store> {
+pub struct IntVar<Dom, Store, DomainRegistrar> {
     domain: DomainId<Dom>,
     store: PhantomData<Store>,
+    registrar: PhantomData<DomainRegistrar>,
 }
 
-impl<Dom, Store> Variable<Store> for IntVar<Dom, Store>
+impl<Dom, Store, DomainRegistrar> Variable<Store, DomainRegistrar>
+    for IntVar<Dom, Store, DomainRegistrar>
 where
     Dom: Domain<Value = i64> + 'static,
     Store: DomainStore<Dom>,
+    DomainRegistrar: RegistrationContext<Dom>,
 {
     type Value = i64;
     type Dom = Dom;
@@ -64,23 +73,25 @@ where
     fn set_max(&self, store: &mut Store, value: &Self::Value) -> bool {
         store.read_mut(self.domain).set_max(value)
     }
+
+    fn register(&self, registrar: &mut DomainRegistrar) {
+        registrar.register(self.domain);
+    }
 }
 
-impl<Dom, Store> From<DomainId<Dom>> for IntVar<Dom, Store> {
+impl<Dom, Store, DomainRegistrar> From<DomainId<Dom>> for IntVar<Dom, Store, DomainRegistrar> {
     fn from(value: DomainId<Dom>) -> Self {
         IntVar {
             domain: value,
             store: PhantomData,
+            registrar: PhantomData,
         }
     }
 }
 
-impl<Dom, Store> Clone for IntVar<Dom, Store> {
+impl<Dom, Store, DomainRegistrar> Clone for IntVar<Dom, Store, DomainRegistrar> {
     fn clone(&self) -> Self {
-        IntVar {
-            domain: self.domain,
-            store: PhantomData,
-        }
+        IntVar::from(self.domain)
     }
 }
-impl<Dom, Store> Copy for IntVar<Dom, Store> {}
+impl<Dom, Store, DomainRegistrar> Copy for IntVar<Dom, Store, DomainRegistrar> {}

@@ -3,6 +3,7 @@
 pub mod domains;
 pub mod propagators;
 
+mod propagator_store;
 mod solver;
 mod variables;
 mod views;

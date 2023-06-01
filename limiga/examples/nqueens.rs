@@ -61,7 +61,7 @@ fn main() {
     };
 
     match solver.solve(brancher) {
-        SolveOutcome::Satisfiable(solutions) => {
+        SolveOutcome::Satisfiable(mut solutions) => {
             while let Some(solution) = solutions.next() {
                 let values = vars
                     .iter()

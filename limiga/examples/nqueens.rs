@@ -23,16 +23,15 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
-    let diag_1 = vars
+    let (diag_1, diag_2): (Vec<_>, Vec<_>) = vars
         .iter()
         .enumerate()
-        .map(|(i, var)| OffsetView::new(*var, i as i64))
-        .collect::<Vec<_>>();
-    let diag_2 = vars
-        .iter()
-        .enumerate()
-        .map(|(i, var)| OffsetView::new(*var, -(i as i64)))
-        .collect::<Vec<_>>();
+        .map(|(i, var)| {
+            let i = i as i64;
+
+            (OffsetView::new(*var, i), OffsetView::new(*var, -i))
+        })
+        .unzip();
 
     all_different(&mut solver, &vars);
     all_different(&mut solver, &diag_1);

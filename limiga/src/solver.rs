@@ -11,13 +11,15 @@ pub struct Solver {
     propagators: PropagatorStore<Domains, PropagatorRegistration>,
 }
 
-pub enum SolveOutcome<'solver> {
-    Satisfiable(SolutionIterator<'solver>),
+pub enum SolveOutcome<'solver, Brancher> {
+    Satisfiable(SolutionIterator<'solver, Brancher>),
     Unsatisfiable,
 }
 
-pub struct SolutionIterator<'solver> {
-    solver: &'solver Solver,
+pub struct SolutionIterator<'solver, Brancher> {
+    solver: &'solver mut Solver,
+    brancher: Brancher,
+    search_on_next: bool,
 }
 
 pub struct Solution<'solver> {
@@ -47,16 +49,32 @@ impl Solver {
         propagator.propagate(&mut self.domains)
     }
 
-    pub fn solve(&mut self, _brancher: impl Brancher<Domains>) -> SolveOutcome<'_> {
+    pub fn solve<B: Brancher<Domains>>(&mut self, _brancher: B) -> SolveOutcome<'_, B> {
         SolveOutcome::Unsatisfiable
+    }
+
+    fn next_solution(&mut self, _brancher: &mut impl Brancher<Domains>) -> bool {
+        false
     }
 }
 
-impl<'solver> SolutionIterator<'solver> {
-    pub fn next<'a: 'solver>(&'a self) -> Option<Solution<'a>> {
-        Some(Solution {
-            solver: self.solver,
-        })
+impl<'solver, B: Brancher<Domains>> SolutionIterator<'solver, B> {
+    pub fn next<'a>(&'a mut self) -> Option<Solution<'a>> {
+        if !self.search_on_next {
+            self.search_on_next = true;
+
+            return Some(Solution {
+                solver: self.solver,
+            });
+        }
+
+        if self.solver.next_solution(&mut self.brancher) {
+            Some(Solution {
+                solver: self.solver,
+            })
+        } else {
+            None
+        }
     }
 }
 

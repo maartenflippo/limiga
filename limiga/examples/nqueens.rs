@@ -43,7 +43,7 @@ fn main() {
             let var_b2 = var.clone();
 
             let val1 = var.min(store).clone();
-            let val2 = var.min(store).clone();
+            let val2 = val1.clone();
 
             Some([
                 Box::new(move |s: &mut Domains| {

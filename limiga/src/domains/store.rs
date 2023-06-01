@@ -15,6 +15,7 @@ pub struct GlobalDomainId(usize);
 #[derive(Default)]
 pub struct Domains {
     bitsets: Vec<BitSetDomain>,
+    history: Vec<Vec<BitSetDomain>>,
     next_global_id: usize,
 }
 
@@ -29,6 +30,20 @@ pub trait DomainStore<Dom> {
 
     /// Get the domain from the store.
     fn read_mut(&mut self, id: DomainId<Dom>) -> &mut Dom;
+}
+
+impl Domains {
+    /// Save the current state to backtrack to later.
+    pub fn push(&mut self) {
+        self.history.push(self.bitsets.clone());
+    }
+
+    /// Return to the previously saved state.
+    pub fn pop(&mut self) {
+        if let Some(bitsets) = self.history.pop() {
+            self.bitsets = bitsets;
+        }
+    }
 }
 
 impl DomainStore<BitSetDomain> for Domains {
@@ -93,5 +108,24 @@ mod tests {
 
         assert_eq!(5, d2.min());
         assert_eq!(50, d2.max());
+    }
+
+    #[test]
+    fn backtracking_restores_appropriate_state() {
+        let mut store = Domains::default();
+
+        let d1 = store.alloc(BitSetDomain::new(1, 10));
+
+        store.push();
+        {
+            let dom = store.read_mut(d1);
+            dom.set_min(&5);
+            assert_eq!(5, dom.min());
+        }
+
+        store.pop();
+
+        let dom = store.read(d1);
+        assert_eq!(1, dom.min());
     }
 }

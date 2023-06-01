@@ -2,6 +2,7 @@
 
 pub mod domains;
 pub mod propagators;
+pub mod search;
 
 mod propagator_store;
 mod solver;

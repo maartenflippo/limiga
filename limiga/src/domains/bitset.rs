@@ -4,6 +4,7 @@ use super::Domain;
 
 /// A bit set domain stores the domain values in a bitset. For large domains, there is a large
 /// memory footprint, but calling [`Domain::remove()`] is cheap.
+#[derive(Clone)]
 pub struct BitSetDomain {
     offset: i64,
 
@@ -83,6 +84,13 @@ impl Domain for BitSetDomain {
     fn set_min(&mut self, value: &Self::Value) -> bool {
         self.size -= value.abs_diff(self.lower_bound) as usize;
         self.lower_bound = *value;
+        true
+    }
+
+    fn fix(&mut self, value: &Self::Value) -> bool {
+        self.size = 1;
+        self.lower_bound = *value;
+        self.upper_bound = *value;
         true
     }
 }

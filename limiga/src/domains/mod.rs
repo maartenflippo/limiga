@@ -35,4 +35,7 @@ pub trait Domain {
     /// Remove all values below the provided value, such that it is the lower bound of the domain.
     /// If the domain becomes empty, this returns false.
     fn set_min(&mut self, value: &Self::Value) -> bool;
+
+    /// Remove all values except the provided value. If the domain becomes empty, this returns false.
+    fn fix(&mut self, value: &Self::Value) -> bool;
 }

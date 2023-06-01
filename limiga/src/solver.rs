@@ -1,6 +1,7 @@
 use crate::{
     domains::{DomainId, DomainStore, Domains, GlobalDomainId},
     propagators::{PropagationResult, Propagator, PropagatorStore, RegistrationContext},
+    search::Brancher,
     IntVar, Variable,
 };
 
@@ -46,7 +47,7 @@ impl Solver {
         propagator.propagate(&mut self.domains)
     }
 
-    pub fn solve(&mut self) -> SolveOutcome<'_> {
+    pub fn solve(&mut self, _brancher: impl Brancher<Domains>) -> SolveOutcome<'_> {
         SolveOutcome::Unsatisfiable
     }
 }
@@ -60,9 +61,9 @@ impl<'solver> SolutionIterator<'solver> {
 }
 
 impl<'solver> Solution<'solver> {
-    pub fn value<Var, DomainRegistrar>(&self, variable: Var) -> Var::Value
+    pub fn value<Var>(&self, variable: Var) -> Var::Value
     where
-        Var: Variable<Domains, DomainRegistrar>,
+        Var: Variable<Domains>,
         Domains: DomainStore<Var::Dom>,
     {
         variable

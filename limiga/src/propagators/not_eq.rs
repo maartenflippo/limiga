@@ -1,18 +1,18 @@
-use crate::variables::Variable;
+use crate::{variables::Variable, Register};
 
 use super::{PropagationResult, Propagator, RegistrationContext};
 
 /// Create a propagator for the constraint `a != b`. Both variables 'a' and 'b' must have the same
 /// type.
-pub fn not_eq<VStore, Value, VX, VY, DomainRegistrar>(
+pub fn not_eq<VStore, Value, VX, VY, Registrar>(
     a: VX,
     b: VY,
-) -> Box<dyn Propagator<VStore, DomainRegistrar>>
+) -> Box<dyn Propagator<VStore, Registrar>>
 where
     Value: PartialEq + Clone,
-    VX: Variable<VStore, DomainRegistrar, Value = Value> + 'static,
-    VY: Variable<VStore, DomainRegistrar, Value = Value> + 'static,
-    DomainRegistrar: RegistrationContext<VX::Dom> + RegistrationContext<VY::Dom>,
+    VX: Variable<VStore, Value = Value> + Register<Registrar> + 'static,
+    VY: Variable<VStore, Value = Value> + Register<Registrar> + 'static,
+    Registrar: RegistrationContext<VX::Dom> + RegistrationContext<VY::Dom>,
 {
     Box::new(NotEq { a, b })
 }
@@ -22,14 +22,14 @@ struct NotEq<VX, VY> {
     b: VY,
 }
 
-impl<VX, VY, VStore, Value, DomainRegistrar> Propagator<VStore, DomainRegistrar> for NotEq<VX, VY>
+impl<VX, VY, VStore, Value, Registrar> Propagator<VStore, Registrar> for NotEq<VX, VY>
 where
     Value: PartialEq + Clone,
-    VX: Variable<VStore, DomainRegistrar, Value = Value>,
-    VY: Variable<VStore, DomainRegistrar, Value = Value>,
-    DomainRegistrar: RegistrationContext<VX::Dom> + RegistrationContext<VY::Dom>,
+    VX: Variable<VStore, Value = Value> + Register<Registrar>,
+    VY: Variable<VStore, Value = Value> + Register<Registrar>,
+    Registrar: RegistrationContext<VX::Dom> + RegistrationContext<VY::Dom>,
 {
-    fn initialize(&mut self, ctx: &mut DomainRegistrar) {
+    fn initialize(&mut self, ctx: &mut Registrar) {
         self.a.register(&mut *ctx);
         self.b.register(&mut *ctx);
     }
@@ -42,15 +42,15 @@ where
     }
 }
 
-fn propagate_one_direction<VX, VY, VStore, Value, DomainRegistrar>(
+fn propagate_one_direction<VX, VY, VStore, Value>(
     a: &VX,
     b: &VY,
     store: &mut VStore,
 ) -> PropagationResult
 where
     Value: PartialEq + Clone,
-    VX: Variable<VStore, DomainRegistrar, Value = Value>,
-    VY: Variable<VStore, DomainRegistrar, Value = Value>,
+    VX: Variable<VStore, Value = Value>,
+    VY: Variable<VStore, Value = Value>,
 {
     let value_to_remove = a.fixed_value(store);
 
@@ -128,9 +128,13 @@ mod tests {
         fn set_min(&mut self, _value: &Self::Value) -> bool {
             todo!()
         }
+
+        fn fix(&mut self, _value: &Self::Value) -> bool {
+            todo!()
+        }
     }
 
-    impl<DomainRegistrar> Variable<Vec<Vec<i64>>, DomainRegistrar> for usize {
+    impl Variable<Vec<Vec<i64>>> for usize {
         type Value = i64;
         type Dom = Vec<i64>;
 
@@ -142,6 +146,11 @@ mod tests {
         fn max(&self, store: &Vec<Vec<i64>>) -> Self::Value {
             let dom = &store[*self];
             <Vec<i64> as Domain>::max(&dom)
+        }
+
+        fn size(&self, store: &Vec<Vec<i64>>) -> usize {
+            let dom = &store[*self];
+            <Vec<i64> as Domain>::size(&dom)
         }
 
         fn fixed_value(&self, store: &Vec<Vec<i64>>) -> Option<Self::Value> {
@@ -164,7 +173,16 @@ mod tests {
             <Vec<i64> as Domain>::set_max(dom, value)
         }
 
-        fn register(&self, _: &mut DomainRegistrar) {}
+        fn fix(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
+            let dom = &mut store[*self];
+            <Vec<i64> as Domain>::fix(dom, value)
+        }
+    }
+
+    impl Register<TestRegistrar> for usize {
+        fn register(&self, _: &mut TestRegistrar) {
+            todo!()
+        }
     }
 
     struct TestRegistrar;

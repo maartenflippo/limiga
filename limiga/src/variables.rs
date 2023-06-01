@@ -5,7 +5,7 @@ use crate::{
     propagators::RegistrationContext,
 };
 
-pub trait Variable<Store, DomainRegistrar> {
+pub trait Variable<Store> {
     /// The type of the values for this variable.
     type Value: PartialOrd;
 
@@ -17,6 +17,9 @@ pub trait Variable<Store, DomainRegistrar> {
 
     /// Get the upper bound of the variable.
     fn max(&self, store: &Store) -> Self::Value;
+
+    /// Get the size of the domain.
+    fn size(&self, store: &Store) -> usize;
 
     /// Get the value if this variable has a singleton domain.
     fn fixed_value(&self, store: &Store) -> Option<Self::Value>;
@@ -30,22 +33,25 @@ pub trait Variable<Store, DomainRegistrar> {
     /// Set the upper bound for this variable.
     fn set_max(&self, store: &mut Store, value: &Self::Value) -> bool;
 
-    /// Register the domain IDs this variable depends on with the registrar.
-    fn register(&self, registrar: &mut DomainRegistrar);
+    /// Fix the variable to the given value. If the domain becomes empty, this returns false.
+    fn fix(&self, store: &mut Store, value: &Self::Value) -> bool;
 }
 
-pub struct IntVar<Dom, Store, DomainRegistrar> {
+pub trait Register<Registrar> {
+    /// Register the domain IDs this variable depends on with the registrar.
+    fn register(&self, registrar: &mut Registrar);
+}
+
+pub struct IntVar<Dom, Store, Registrar> {
     domain: DomainId<Dom>,
     store: PhantomData<Store>,
-    registrar: PhantomData<DomainRegistrar>,
+    registrar: PhantomData<Registrar>,
 }
 
-impl<Dom, Store, DomainRegistrar> Variable<Store, DomainRegistrar>
-    for IntVar<Dom, Store, DomainRegistrar>
+impl<Dom, Store, Registrar> Variable<Store> for IntVar<Dom, Store, Registrar>
 where
     Dom: Domain<Value = i64> + 'static,
     Store: DomainStore<Dom>,
-    DomainRegistrar: RegistrationContext<Dom>,
 {
     type Value = i64;
     type Dom = Dom;
@@ -56,6 +62,10 @@ where
 
     fn max(&self, store: &Store) -> Self::Value {
         store.read(self.domain).max()
+    }
+
+    fn size(&self, store: &Store) -> usize {
+        store.read(self.domain).size()
     }
 
     fn fixed_value(&self, store: &Store) -> Option<Self::Value> {
@@ -74,7 +84,17 @@ where
         store.read_mut(self.domain).set_max(value)
     }
 
-    fn register(&self, registrar: &mut DomainRegistrar) {
+    fn fix(&self, store: &mut Store, value: &Self::Value) -> bool {
+        let dom = store.read_mut(self.domain);
+        dom.set_min(value) && dom.set_max(value)
+    }
+}
+
+impl<Dom, Store, Registrar> Register<Registrar> for IntVar<Dom, Store, Registrar>
+where
+    Registrar: RegistrationContext<Dom>,
+{
+    fn register(&self, registrar: &mut Registrar) {
         registrar.register(self.domain);
     }
 }

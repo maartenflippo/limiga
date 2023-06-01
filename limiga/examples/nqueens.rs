@@ -1,7 +1,7 @@
 use limiga::{
     domains::{BitSetDomain, Domains},
     propagators::not_eq,
-    search::Branch,
+    search::{partitioners::DomainMin, selectors::FirstFail, Search},
     OffsetView, PropagatorRegistration, Register, SolveOutcome, Solver, Variable,
 };
 
@@ -37,34 +37,7 @@ fn main() {
     all_different(&mut solver, &diag_1);
     all_different(&mut solver, &diag_2);
 
-    let brancher = |store: &Domains| {
-        if let Some(var) = vars
-            .iter()
-            .filter(|var| var.size(store) > 1)
-            .min_by_key(|var| var.size(store))
-            .cloned()
-        {
-            let val = var.min(store);
-
-            Some(
-                [
-                    Box::new(move |s: &mut Domains| {
-                        let val = val;
-                        var.fix(s, &val);
-                    }) as Branch<Domains>,
-                    Box::new(move |store: &mut Domains| {
-                        let val = val;
-                        var.remove(store, &val);
-                    }) as Branch<Domains>,
-                ]
-                .into_iter()
-                .rev(),
-            )
-        } else {
-            None
-        }
-    };
-
+    let brancher = Search::new(FirstFail::new(vars.clone()), DomainMin);
     match solver.solve(brancher) {
         SolveOutcome::Satisfiable(mut solutions) => {
             println!("SATISFIABLE");

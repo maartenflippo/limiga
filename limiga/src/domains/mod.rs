@@ -23,7 +23,9 @@ pub trait Domain {
     /// The number of elements in the domain. This is at most the difference between the upper and
     /// lower bound, but elements in between might be missing.
     fn size(&self) -> usize;
+}
 
+pub trait DomainMut: Domain {
     /// Remove a value from this domain. If the domain becomes empty, false is returned. Otherwise,
     /// true is returned.
     fn remove(&mut self, value: &Self::Value) -> bool;

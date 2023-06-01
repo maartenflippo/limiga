@@ -63,7 +63,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::domains::{Domain, DomainId};
+    use crate::domains::{Domain, DomainId, DomainMut};
 
     use super::*;
 
@@ -110,7 +110,9 @@ mod tests {
         fn size(&self) -> usize {
             todo!()
         }
+    }
 
+    impl DomainMut for Vec<i64> {
         fn remove(&mut self, value: &Self::Value) -> bool {
             let idx = self.iter().position(|v| v == value);
 
@@ -160,22 +162,22 @@ mod tests {
 
         fn remove(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
             let dom = &mut store[*self];
-            <Vec<i64> as Domain>::remove(dom, value)
+            <Vec<i64> as DomainMut>::remove(dom, value)
         }
 
         fn set_min(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
             let dom = &mut store[*self];
-            <Vec<i64> as Domain>::set_min(dom, value)
+            <Vec<i64> as DomainMut>::set_min(dom, value)
         }
 
         fn set_max(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
             let dom = &mut store[*self];
-            <Vec<i64> as Domain>::set_max(dom, value)
+            <Vec<i64> as DomainMut>::set_max(dom, value)
         }
 
         fn fix(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {
             let dom = &mut store[*self];
-            <Vec<i64> as Domain>::fix(dom, value)
+            <Vec<i64> as DomainMut>::fix(dom, value)
         }
     }
 

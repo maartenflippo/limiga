@@ -4,7 +4,8 @@ pub mod domains;
 pub mod propagators;
 pub mod search;
 
-mod propagator_store;
+mod keyed_idx_vec;
+mod propagator_queue;
 mod solver;
 mod variables;
 mod views;

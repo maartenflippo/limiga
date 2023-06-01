@@ -50,16 +50,20 @@ fn main() {
             let val1 = var.min(store).clone();
             let val2 = val1.clone();
 
-            Some([
-                Box::new(move |s: &mut Domains| {
-                    let val = val1;
-                    var.fix(s, &val);
-                }) as Branch<Domains>,
-                Box::new(move |store: &mut Domains| {
-                    let val = val2;
-                    var_b2.remove(store, &val);
-                }) as Branch<Domains>,
-            ])
+            Some(
+                [
+                    Box::new(move |s: &mut Domains| {
+                        let val = val1;
+                        var.fix(s, &val);
+                    }) as Branch<Domains>,
+                    Box::new(move |store: &mut Domains| {
+                        let val = val2;
+                        var_b2.remove(store, &val);
+                    }) as Branch<Domains>,
+                ]
+                .into_iter()
+                .rev(),
+            )
         } else {
             None
         }

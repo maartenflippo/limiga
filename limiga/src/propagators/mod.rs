@@ -8,6 +8,7 @@ use crate::domains::DomainId;
 
 /// After propagation, a domain may become empty. This enum is used to indicate whether a domain
 /// has become empty.
+#[derive(Debug, PartialEq)]
 pub enum PropagationResult {
     Consistent,
     Inconsistent,
@@ -86,5 +87,16 @@ impl Try for PropagationResult {
 impl FromResidual for PropagationResult {
     fn from_residual(_: <Self as Try>::Residual) -> Self {
         PropagationResult::Inconsistent
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl PropagatorId {
+        pub fn from_index(idx: usize) -> PropagatorId {
+            PropagatorId(idx)
+        }
     }
 }

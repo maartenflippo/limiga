@@ -1,6 +1,6 @@
 use bit_vec::BitVec;
 
-use super::Domain;
+use super::{Domain, DomainMut};
 
 /// A bit set domain stores the domain values in a bitset. For large domains, there is a large
 /// memory footprint, but calling [`Domain::remove()`] is cheap.
@@ -52,13 +52,24 @@ impl Domain for BitSetDomain {
     fn size(&self) -> usize {
         self.size
     }
+}
 
+impl DomainMut for BitSetDomain {
     fn remove(&mut self, value: &Self::Value) -> bool {
+        if value < &self.min() || value > &self.max() {
+            return self.size() > 0;
+        }
+
         let mut bit_idx = value.abs_diff(self.offset) as usize;
+
         let is_present = self.values[bit_idx];
 
         self.values.set(bit_idx, false);
         self.size -= usize::from(is_present);
+
+        if self.size == 0 {
+            return false;
+        }
 
         if *value == self.min() {
             while !self.values[bit_idx] {

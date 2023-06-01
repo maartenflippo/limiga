@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    domains::{Domain, DomainId, DomainStore},
+    domains::{Domain, DomainId, DomainMut, DomainStore},
     propagators::RegistrationContext,
 };
 
@@ -50,7 +50,7 @@ pub struct IntVar<Dom, Store, Registrar> {
 
 impl<Dom, Store, Registrar> Variable<Store> for IntVar<Dom, Store, Registrar>
 where
-    Dom: Domain<Value = i64> + 'static,
+    Dom: DomainMut<Value = i64> + 'static,
     Store: DomainStore<Dom>,
 {
     type Value = i64;
@@ -85,8 +85,8 @@ where
     }
 
     fn fix(&self, store: &mut Store, value: &Self::Value) -> bool {
-        let dom = store.read_mut(self.domain);
-        dom.set_min(value) && dom.set_max(value)
+        let mut dom = store.read_mut(self.domain);
+        dom.fix(value)
     }
 }
 

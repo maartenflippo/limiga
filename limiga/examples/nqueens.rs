@@ -17,7 +17,7 @@ fn main() {
     let vars = (0..n)
         .map(|_| {
             solver.new_int_var(BitSetDomain::new(
-                0,
+                1,
                 n.try_into().expect("could not convert 'n' to i64"),
             ))
         })
@@ -39,7 +39,12 @@ fn main() {
     all_different(&mut solver, &diag_2);
 
     let brancher = |store: &Domains| {
-        if let Some(var) = vars.iter().min_by_key(|var| var.size(store)).cloned() {
+        if let Some(var) = vars
+            .iter()
+            .filter(|var| var.size(store) > 1)
+            .min_by_key(|var| var.size(store))
+            .cloned()
+        {
             let var_b2 = var.clone();
 
             let val1 = var.min(store).clone();
@@ -62,13 +67,13 @@ fn main() {
 
     match solver.solve(brancher) {
         SolveOutcome::Satisfiable(mut solutions) => {
+            println!("SATISFIABLE");
             while let Some(solution) = solutions.next() {
                 let values = vars
                     .iter()
                     .map(|var| solution.value(*var))
                     .collect::<Vec<_>>();
 
-                println!("SATISFIABLE");
                 print_board(values);
             }
         }
@@ -86,7 +91,7 @@ fn print_board(values: Vec<i64>) {
         .map(|value| {
             let row = (0..n)
                 .map(|col| {
-                    if col == value.try_into().unwrap() {
+                    if col == (value - 1).try_into().unwrap() {
                         "| * "
                     } else {
                         "|   "

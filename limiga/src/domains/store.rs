@@ -29,10 +29,10 @@ pub trait DomainStore<Dom> {
     fn alloc(&mut self, domain: Dom) -> DomainId<Dom>;
 
     /// Get the domain from the store.
-    fn read<'dom>(&'dom self, id: DomainId<Dom>) -> DomainRef<'dom, Dom>;
+    fn read(&self, id: DomainId<Dom>) -> DomainRef<'_, Dom>;
 
     /// Get the domain from the store.
-    fn read_mut<'dom>(&'dom mut self, id: DomainId<Dom>) -> DomainRefMut<'dom, Dom>;
+    fn read_mut(&mut self, id: DomainId<Dom>) -> DomainRefMut<'_, Dom>;
 }
 
 pub struct DomainRef<'dom, Dom> {
@@ -152,16 +152,13 @@ impl DomainStore<BitSetDomain> for Domains {
         }
     }
 
-    fn read<'dom>(&'dom self, id: DomainId<BitSetDomain>) -> DomainRef<'dom, BitSetDomain> {
+    fn read(&self, id: DomainId<BitSetDomain>) -> DomainRef<'_, BitSetDomain> {
         DomainRef {
             inner: &self.bitsets[id.index],
         }
     }
 
-    fn read_mut<'dom>(
-        &'dom mut self,
-        id: DomainId<BitSetDomain>,
-    ) -> DomainRefMut<'dom, BitSetDomain> {
+    fn read_mut(&mut self, id: DomainId<BitSetDomain>) -> DomainRefMut<'_, BitSetDomain> {
         DomainRefMut {
             inner: &mut self.bitsets[id.index],
             events: &mut self.updated_domains,

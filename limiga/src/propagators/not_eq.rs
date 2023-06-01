@@ -142,22 +142,22 @@ mod tests {
 
         fn min(&self, store: &Vec<Vec<i64>>) -> Self::Value {
             let dom = &store[*self];
-            <Vec<i64> as Domain>::min(&dom)
+            <Vec<i64> as Domain>::min(dom)
         }
 
         fn max(&self, store: &Vec<Vec<i64>>) -> Self::Value {
             let dom = &store[*self];
-            <Vec<i64> as Domain>::max(&dom)
+            <Vec<i64> as Domain>::max(dom)
         }
 
         fn size(&self, store: &Vec<Vec<i64>>) -> usize {
             let dom = &store[*self];
-            <Vec<i64> as Domain>::size(&dom)
+            <Vec<i64> as Domain>::size(dom)
         }
 
         fn fixed_value(&self, store: &Vec<Vec<i64>>) -> Option<Self::Value> {
             let dom = &store[*self];
-            <Vec<i64> as Domain>::fixed_value(&dom)
+            <Vec<i64> as Domain>::fixed_value(dom)
         }
 
         fn remove(&self, store: &mut Vec<Vec<i64>>, value: &Self::Value) -> bool {

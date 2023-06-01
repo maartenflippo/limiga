@@ -45,20 +45,17 @@ fn main() {
             .min_by_key(|var| var.size(store))
             .cloned()
         {
-            let var_b2 = var.clone();
-
-            let val1 = var.min(store).clone();
-            let val2 = val1.clone();
+            let val = var.min(store);
 
             Some(
                 [
                     Box::new(move |s: &mut Domains| {
-                        let val = val1;
+                        let val = val;
                         var.fix(s, &val);
                     }) as Branch<Domains>,
                     Box::new(move |store: &mut Domains| {
-                        let val = val2;
-                        var_b2.remove(store, &val);
+                        let val = val;
+                        var.remove(store, &val);
                     }) as Branch<Domains>,
                 ]
                 .into_iter()
@@ -72,7 +69,7 @@ fn main() {
     match solver.solve(brancher) {
         SolveOutcome::Satisfiable(mut solutions) => {
             println!("SATISFIABLE");
-            while let Some(solution) = solutions.next() {
+            while let Some(solution) = solutions.next_solution() {
                 let values = vars
                     .iter()
                     .map(|var| solution.value(*var))

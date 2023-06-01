@@ -118,7 +118,7 @@ impl Solver {
     }
 
     fn add_branches(&mut self, brancher: &mut impl Brancher<Domains>) -> bool {
-        if let Some(branches) = brancher.branch(&mut self.domains) {
+        if let Some(branches) = brancher.branch(&self.domains) {
             self.action_queue.push_front(Action::Backtrack);
 
             for branch in branches {
@@ -153,7 +153,7 @@ impl Solver {
 }
 
 impl<'solver, B: Brancher<Domains>> SolutionIterator<'solver, B> {
-    pub fn next<'a>(&'a mut self) -> Option<Solution<'a>> {
+    pub fn next_solution(&mut self) -> Option<Solution<'_>> {
         if !self.search_on_next {
             self.search_on_next = true;
 

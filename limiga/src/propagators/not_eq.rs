@@ -4,14 +4,11 @@ use super::{PropagationResult, Propagator, RegistrationContext};
 
 /// Create a propagator for the constraint `a != b`. Both variables 'a' and 'b' must have the same
 /// type.
-pub fn not_eq<VStore, Value, VX, VY, Registrar>(
-    a: VX,
-    b: VY,
-) -> Box<dyn Propagator<VStore, Registrar>>
+pub fn not_eq<VX, VY, VStore, Registrar>(a: VX, b: VY) -> Box<dyn Propagator<VStore, Registrar>>
 where
-    Value: PartialEq + Clone,
-    VX: Variable<VStore, Value = Value> + Register<Registrar> + 'static,
-    VY: Variable<VStore, Value = Value> + Register<Registrar> + 'static,
+    VX: Variable<VStore> + Register<Registrar> + 'static,
+    VY: Variable<VStore, Value = VX::Value> + Register<Registrar> + 'static,
+    VX::Value: PartialEq + Clone,
     Registrar: RegistrationContext<VX::Dom> + RegistrationContext<VY::Dom>,
 {
     Box::new(NotEq { a, b })
@@ -22,11 +19,11 @@ struct NotEq<VX, VY> {
     b: VY,
 }
 
-impl<VX, VY, VStore, Value, Registrar> Propagator<VStore, Registrar> for NotEq<VX, VY>
+impl<VX, VY, VStore, Registrar> Propagator<VStore, Registrar> for NotEq<VX, VY>
 where
-    Value: PartialEq + Clone,
-    VX: Variable<VStore, Value = Value> + Register<Registrar>,
-    VY: Variable<VStore, Value = Value> + Register<Registrar>,
+    VX: Variable<VStore> + Register<Registrar>,
+    VY: Variable<VStore, Value = VX::Value> + Register<Registrar>,
+    VX::Value: PartialEq + Clone,
     Registrar: RegistrationContext<VX::Dom> + RegistrationContext<VY::Dom>,
 {
     fn initialize(&mut self, ctx: &mut Registrar) {
@@ -42,15 +39,11 @@ where
     }
 }
 
-fn propagate_one_direction<VX, VY, VStore, Value>(
-    a: &VX,
-    b: &VY,
-    store: &mut VStore,
-) -> PropagationResult
+fn propagate_one_direction<VX, VY, VStore>(a: &VX, b: &VY, store: &mut VStore) -> PropagationResult
 where
-    Value: PartialEq + Clone,
-    VX: Variable<VStore, Value = Value>,
-    VY: Variable<VStore, Value = Value>,
+    VX::Value: PartialEq + Clone,
+    VX: Variable<VStore>,
+    VY: Variable<VStore, Value = VX::Value>,
 {
     let value_to_remove = a.fixed_value(store);
 

@@ -79,6 +79,8 @@ fn print_board(values: Vec<i64>) {
     println!("{row_separator}{board}");
 }
 
+/// For now, we do not have a dedicated propagator for this constraint. Therefore, we model it
+/// using a decomposition into pairwaise inequalities.
 fn all_different<Var>(solver: &mut Solver, vars: &[Var])
 where
     Var: Variable<Domains> + Register<PropagatorRegistration> + Clone + 'static,

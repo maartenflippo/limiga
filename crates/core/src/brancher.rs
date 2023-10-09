@@ -1,11 +1,11 @@
 use crate::{
-    assignment::Trail,
+    assignment::Assignment,
     lit::{Lit, Var},
 };
 
 pub trait Brancher {
     fn on_new_var(&mut self, var: Var);
-    fn next_decision(&mut self, trail: &Trail) -> Option<Lit>;
+    fn next_decision(&mut self, assignment: &Assignment) -> Option<Lit>;
 }
 
 #[derive(Default)]
@@ -18,11 +18,11 @@ impl Brancher for NaiveBrancher {
         self.vars.push(var);
     }
 
-    fn next_decision(&mut self, trail: &Trail) -> Option<Lit> {
+    fn next_decision(&mut self, assignment: &Assignment) -> Option<Lit> {
         self.vars
             .iter()
             .copied()
             .map(Lit::positive)
-            .find(|&lit| trail.value(lit).is_none())
+            .find(|&lit| assignment.value(lit).is_none())
     }
 }

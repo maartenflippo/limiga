@@ -1,4 +1,7 @@
-use std::ops::{Index, IndexMut};
+use std::{
+    fmt::Debug,
+    ops::{Index, IndexMut},
+};
 
 use crate::lit::Lit;
 
@@ -22,6 +25,7 @@ impl LongClause {
         self.head.iter().chain(self.tail.iter())
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.head.len() + self.tail.len()
     }
@@ -36,6 +40,20 @@ impl Index<usize> for LongClause {
         } else {
             &self.tail[index - self.head.len()]
         }
+    }
+}
+
+impl Debug for LongClause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{:?}, {:?}", self.head[0], self.head[1])?;
+
+        for lit in self.tail.iter() {
+            write!(f, ", {lit:?}")?;
+        }
+
+        write!(f, "]")?;
+
+        Ok(())
     }
 }
 

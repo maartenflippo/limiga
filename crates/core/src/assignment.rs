@@ -26,6 +26,10 @@ impl Assignment {
         }
     }
 
+    pub fn is_unassigned(&self, lit: Lit) -> bool {
+        !self.snapshot[lit_to_idx(lit)]
+    }
+
     pub fn assign(&mut self, lit: Lit) {
         trace!("assigning {lit:?}");
 
@@ -80,4 +84,3 @@ mod tests {
         assert_eq!(Some(false), assignment.value(!lit));
     }
 }
-

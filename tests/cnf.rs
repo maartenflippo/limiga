@@ -1,6 +1,9 @@
-use std::{fs::File, num::NonZeroI32, path::PathBuf};
+use std::{fs::File, num::NonZeroI32, path::PathBuf, time::Duration};
 
+use limiga::Conclusion;
 use limiga_dimacs::DimacsSink;
+
+const TEST_TIME_BUDGET: Duration = Duration::from_secs(30);
 
 macro_rules! cnf_instance {
     ($name:ident) => {
@@ -12,7 +15,8 @@ macro_rules! cnf_instance {
                 stringify!($name),
             ));
 
-            let result = limiga::run_solver(&file).expect("failed to run solver");
+            let result =
+                limiga::run_solver(&file, Some(TEST_TIME_BUDGET)).expect("failed to run solver");
 
             let instance = limiga_dimacs::parse_cnf(
                 File::open(file).expect("could not open instance file for checking"),
@@ -20,8 +24,16 @@ macro_rules! cnf_instance {
             )
             .expect("valid dimacs");
 
-            if let Some(assignment) = result {
-                instance.assert_satisfied(assignment);
+            match result {
+                Conclusion::Satisfiable(assignment) => instance.assert_satisfied(assignment),
+                Conclusion::Unsatisfiable => {
+                    // TODO: Verify unsat through certificates when we have enabled proof logging.
+                    // For now these show up as passing.
+                }
+                Conclusion::Unknown => panic!(
+                    "instance timed out after {} seconds",
+                    TEST_TIME_BUDGET.as_secs()
+                ),
             }
         }
     };

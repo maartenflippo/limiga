@@ -7,11 +7,13 @@ use crate::{
     clause::{ClauseDb, ClauseRef},
     lit::{Lit, Var},
     storage::KeyedVec,
+    termination::Terminator,
     trail::Trail,
 };
 
-pub struct Solver<B> {
-    brancher: B,
+pub struct Solver<SearchProc, Timer> {
+    brancher: SearchProc,
+    timer: Timer,
 
     clauses: ClauseDb,
     learned_clause_buffer: Vec<Lit>,
@@ -36,10 +38,11 @@ enum State {
     ConflictAtRoot,
 }
 
-impl<B: Brancher> Solver<B> {
-    pub fn new(brancher: B) -> Self {
+impl<SearchProc, Timer> Solver<SearchProc, Timer> {
+    pub fn new(brancher: SearchProc, timer: Timer) -> Self {
         Solver {
             brancher,
+            timer,
             clauses: Default::default(),
             learned_clause_buffer: Default::default(),
             decision_level: Default::default(),
@@ -54,11 +57,12 @@ impl<B: Brancher> Solver<B> {
             next_var_code: 0,
         }
     }
+}
 
-    pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {
-        NewLitIterator { solver: self }
-    }
-
+impl<SearchProc, Timer> Solver<SearchProc, Timer>
+where
+    SearchProc: Brancher,
+{
     pub fn add_clause(&mut self, lits: impl AsRef<[Lit]>) {
         if self.state == State::ConflictAtRoot {
             return;
@@ -87,58 +91,8 @@ impl<B: Brancher> Solver<B> {
         }
     }
 
-    pub fn solve(&mut self) -> SolveResult<'_, B> {
-        if self.state == State::ConflictAtRoot {
-            return SolveResult::Unsatisfiable;
-        }
-
-        loop {
-            match self.propagate() {
-                Some(conflict) => {
-                    trace!("conflict at dl {}", self.decision_level);
-
-                    if self.decision_level == 0 {
-                        return SolveResult::Unsatisfiable;
-                    }
-
-                    let backjump_level = self.analyze(conflict);
-
-                    self.backtrack_to(backjump_level);
-
-                    for lit in self.learned_clause_buffer.iter() {
-                        self.brancher.on_variable_activated(lit.var());
-                    }
-
-                    let clause_ref = if self.learned_clause_buffer.len() > 1 {
-                        self.clauses.add_clause(&self.learned_clause_buffer)
-                    } else {
-                        ClauseRef::default()
-                    };
-
-                    assert!(
-                        self.enqueue(self.learned_clause_buffer[0], clause_ref),
-                        "conflicting asserting literal"
-                    );
-
-                    self.brancher.on_conflict();
-                }
-
-                None => {
-                    self.trail.push();
-                    self.decision_level += 1;
-
-                    if let Some(decision) = self.brancher.next_decision(&self.assignment) {
-                        trace!("decided {decision:?}");
-                        assert!(
-                            self.enqueue(decision, ClauseRef::default()),
-                            "decided already assigned literal"
-                        );
-                    } else {
-                        return SolveResult::Satisfiable(Solution { solver: self });
-                    }
-                }
-            }
-        }
+    pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {
+        NewLitIterator { solver: self }
     }
 
     fn enqueue(&mut self, lit: Lit, reason: ClauseRef) -> bool {
@@ -315,30 +269,103 @@ impl<B: Brancher> Solver<B> {
     }
 }
 
-pub enum SolveResult<'solver, B> {
-    Satisfiable(Solution<'solver, B>),
+impl<SearchProc, Timer> Solver<SearchProc, Timer>
+where
+    SearchProc: Brancher,
+    Timer: Terminator,
+{
+    pub fn solve(&mut self) -> SolveResult<'_> {
+        if self.state == State::ConflictAtRoot {
+            return SolveResult::Unsatisfiable;
+        }
+
+        while !self.timer.should_stop() {
+            match self.propagate() {
+                Some(conflict) => {
+                    trace!("conflict at dl {}", self.decision_level);
+
+                    if self.decision_level == 0 {
+                        return SolveResult::Unsatisfiable;
+                    }
+
+                    let backjump_level = self.analyze(conflict);
+
+                    self.backtrack_to(backjump_level);
+
+                    for lit in self.learned_clause_buffer.iter() {
+                        self.brancher.on_variable_activated(lit.var());
+                    }
+
+                    let clause_ref = if self.learned_clause_buffer.len() > 1 {
+                        self.clauses.add_clause(&self.learned_clause_buffer)
+                    } else {
+                        ClauseRef::default()
+                    };
+
+                    assert!(
+                        self.enqueue(self.learned_clause_buffer[0], clause_ref),
+                        "conflicting asserting literal"
+                    );
+
+                    self.brancher.on_conflict();
+                }
+
+                None => {
+                    self.trail.push();
+                    self.decision_level += 1;
+
+                    if let Some(decision) = self.brancher.next_decision(&self.assignment) {
+                        trace!("decided {decision:?}");
+                        assert!(
+                            self.enqueue(decision, ClauseRef::default()),
+                            "decided already assigned literal"
+                        );
+                    } else {
+                        return SolveResult::Satisfiable(Solution {
+                            assignment: &mut self.assignment,
+                            last_var_code: self.next_var_code - 1,
+                        });
+                    }
+                }
+            }
+        }
+
+        SolveResult::Unknown
+    }
+}
+
+pub enum SolveResult<'solver> {
+    /// A solution has been found for the formula.
+    Satisfiable(Solution<'solver>),
+    /// No solution exists for the formula.
     Unsatisfiable,
+    /// The solver was interrupted before reaching a conclusion.
+    Unknown,
 }
 
-pub struct Solution<'solver, B> {
-    solver: &'solver mut Solver<B>,
+pub struct Solution<'solver> {
+    assignment: &'solver mut Assignment,
+    last_var_code: u32,
 }
 
-impl<B> Solution<'_, B> {
+impl Solution<'_> {
     pub fn value(&self, var: Var) -> bool {
-        self.solver.assignment.value(Lit::positive(var)).unwrap()
+        self.assignment.value(Lit::positive(var)).unwrap()
     }
 
     pub fn vars(&self) -> impl Iterator<Item = Var> + '_ {
-        (0..self.solver.next_var_code).map(|code| Var::try_from(code).unwrap())
+        (0..=self.last_var_code).map(|code| Var::try_from(code).unwrap())
     }
 }
 
-struct NewLitIterator<'a, B> {
-    solver: &'a mut Solver<B>,
+struct NewLitIterator<'a, SearchProc, Timer> {
+    solver: &'a mut Solver<SearchProc, Timer>,
 }
 
-impl<B: Brancher> Iterator for NewLitIterator<'_, B> {
+impl<SearchProc, Timer> Iterator for NewLitIterator<'_, SearchProc, Timer>
+where
+    SearchProc: Brancher,
+{
     type Item = Lit;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -357,7 +384,7 @@ impl<B: Brancher> Iterator for NewLitIterator<'_, B> {
     }
 }
 
-impl<B> Drop for NewLitIterator<'_, B> {
+impl<SearchProc, Timer> Drop for NewLitIterator<'_, SearchProc, Timer> {
     fn drop(&mut self) {
         self.solver
             .seen

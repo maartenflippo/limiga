@@ -1,9 +1,10 @@
-use std::{fmt::Write, fs::File, num::NonZeroI32, path::Path};
+use std::{fmt::Write, fs::File, num::NonZeroI32, path::Path, time::Duration};
 
 use limiga_core::{
     brancher::{Brancher, VsidsBrancher},
     lit::{Lit, Var},
     solver::{Solution, SolveResult, Solver},
+    termination::TimeBudget,
 };
 use limiga_dimacs::DimacsSink;
 use thiserror::Error;
@@ -21,10 +22,22 @@ pub enum LimigaError {
     DimacsError(#[from] limiga_dimacs::DimacsParseError),
 }
 
-pub fn run_solver(path: impl AsRef<Path>) -> Result<Option<Assignment>, LimigaError> {
-    let file = File::open(path)?;
+pub enum Conclusion {
+    Satisfiable(Assignment),
+    Unsatisfiable,
+    Unknown,
+}
 
-    let mut solver = Solver::new(VsidsBrancher::new(0.95));
+pub fn run_solver(
+    path: impl AsRef<Path>,
+    timeout: Option<Duration>,
+) -> Result<Conclusion, LimigaError> {
+    let file = File::open(path)?;
+    let timer = timeout
+        .map(TimeBudget::starting_now)
+        .unwrap_or(TimeBudget::infinite());
+
+    let mut solver = Solver::new(VsidsBrancher::new(0.95), timer);
     let mut sink = limiga_dimacs::parse_cnf(file, |header| {
         let vars = solver
             .new_lits()
@@ -37,8 +50,9 @@ pub fn run_solver(path: impl AsRef<Path>) -> Result<Option<Assignment>, LimigaEr
     })?;
 
     match sink.solver.solve() {
-        SolveResult::Satisfiable(solution) => Ok(Some(solution.into())),
-        SolveResult::Unsatisfiable => Ok(None),
+        SolveResult::Satisfiable(solution) => Ok(Conclusion::Satisfiable(solution.into())),
+        SolveResult::Unsatisfiable => Ok(Conclusion::Unsatisfiable),
+        SolveResult::Unknown => Ok(Conclusion::Unknown),
     }
 }
 
@@ -75,20 +89,23 @@ impl Assignment {
     }
 }
 
-impl<'a, B> From<Solution<'a, B>> for Assignment {
-    fn from(solution: Solution<'a, B>) -> Self {
+impl<'a> From<Solution<'a>> for Assignment {
+    fn from(solution: Solution<'a>) -> Self {
         let values = solution.vars().map(|var| solution.value(var)).collect();
 
         Assignment { values }
     }
 }
 
-struct SolverSink<B> {
-    solver: Solver<B>,
+struct SolverSink<SearchProc, Timer> {
+    solver: Solver<SearchProc, Timer>,
     vars: Box<[Var]>,
 }
 
-impl<B: Brancher> DimacsSink for SolverSink<B> {
+impl<SearchProc, Timer> DimacsSink for SolverSink<SearchProc, Timer>
+where
+    SearchProc: Brancher,
+{
     fn add_clause(&mut self, lits: &[std::num::NonZeroI32]) {
         let lits = lits
             .iter()

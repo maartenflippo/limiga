@@ -10,7 +10,6 @@ use crate::{
     trail::Trail,
 };
 
-#[derive(Default)]
 pub struct Solver<B> {
     brancher: B,
 
@@ -38,6 +37,24 @@ enum State {
 }
 
 impl<B: Brancher> Solver<B> {
+    pub fn new(brancher: B) -> Self {
+        Solver {
+            brancher,
+            clauses: Default::default(),
+            learned_clause_buffer: Default::default(),
+            decision_level: Default::default(),
+            seen: Default::default(),
+            state: Default::default(),
+            trail: Default::default(),
+            assignment: Default::default(),
+            reasons: Default::default(),
+            decided_at: Default::default(),
+            next_propagation_idx: 0,
+            watch_list: Default::default(),
+            next_var_code: 0,
+        }
+    }
+
     pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {
         NewLitIterator { solver: self }
     }
@@ -88,6 +105,10 @@ impl<B: Brancher> Solver<B> {
 
                     self.backtrack_to(backjump_level);
 
+                    for lit in self.learned_clause_buffer.iter() {
+                        self.brancher.on_variable_activated(lit.var());
+                    }
+
                     let clause_ref = if self.learned_clause_buffer.len() > 1 {
                         self.clauses.add_clause(&self.learned_clause_buffer)
                     } else {
@@ -98,6 +119,8 @@ impl<B: Brancher> Solver<B> {
                         self.enqueue(self.learned_clause_buffer[0], clause_ref),
                         "conflicting asserting literal"
                     );
+
+                    self.brancher.on_conflict();
                 }
 
                 None => {
@@ -199,6 +222,7 @@ impl<B: Brancher> Solver<B> {
     fn backtrack_to(&mut self, decision_level: usize) {
         self.trail.backtrack_to(decision_level).for_each(|lit| {
             self.assignment.unassign(lit);
+            self.brancher.on_variable_unassigned(lit.var());
         });
 
         self.decision_level = decision_level;
@@ -286,6 +310,7 @@ impl<B: Brancher> Solver<B> {
     fn undo_one(&mut self) {
         if let Some(lit) = self.trail.pop() {
             self.assignment.unassign(lit);
+            self.brancher.on_variable_unassigned(lit.var());
         }
     }
 }

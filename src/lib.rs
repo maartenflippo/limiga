@@ -1,9 +1,9 @@
 use std::{fmt::Write, fs::File, num::NonZeroI32, path::Path};
 
 use limiga_core::{
+    brancher::{Brancher, VsidsBrancher},
     lit::{Lit, Var},
-    solver::{Solution, SolveResult},
-    SatSolver,
+    solver::{Solution, SolveResult, Solver},
 };
 use limiga_dimacs::DimacsSink;
 use thiserror::Error;
@@ -24,7 +24,7 @@ pub enum LimigaError {
 pub fn run_solver(path: impl AsRef<Path>) -> Result<Option<Assignment>, LimigaError> {
     let file = File::open(path)?;
 
-    let mut solver = SatSolver::default();
+    let mut solver = Solver::new(VsidsBrancher::new(0.95));
     let mut sink = limiga_dimacs::parse_cnf(file, |header| {
         let vars = solver
             .new_lits()
@@ -83,12 +83,12 @@ impl<'a, B> From<Solution<'a, B>> for Assignment {
     }
 }
 
-struct SolverSink {
-    solver: SatSolver,
+struct SolverSink<B> {
+    solver: Solver<B>,
     vars: Box<[Var]>,
 }
 
-impl DimacsSink for SolverSink {
+impl<B: Brancher> DimacsSink for SolverSink<B> {
     fn add_clause(&mut self, lits: &[std::num::NonZeroI32]) {
         let lits = lits
             .iter()

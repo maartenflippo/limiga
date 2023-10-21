@@ -15,6 +15,12 @@ pub struct KeyedVec<Key, Value> {
     values: Vec<Value>,
 }
 
+impl<Key, Value> KeyedVec<Key, Value> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Value> + '_ {
+        self.values.iter_mut()
+    }
+}
+
 impl<Key: Indexer, Value: Default> KeyedVec<Key, Value> {
     pub fn grow_to(&mut self, key: Key) {
         let minimum_len = key.get_minimum_len() + 1;

@@ -226,7 +226,7 @@ where
                     }
 
                     let (literal_to_enqueue, reason, backjump_level) = {
-                        let mut trail = AnalyzerTrail {
+                        let mut state = StateForAnalyzer {
                             trail: &mut self.trail,
                             assignment: &mut self.assignment,
                             brancher: &mut self.brancher,
@@ -237,12 +237,8 @@ where
                             &self.clauses,
                             &self.implication_graph,
                             &self.search_tree,
-                            &mut trail,
+                            &mut state,
                         );
-
-                        for lit in analysis.learned_clause.iter() {
-                            self.brancher.on_variable_activated(lit.var());
-                        }
 
                         let clause_ref = if analysis.learned_clause.len() > 1 {
                             self.clauses.add_clause(analysis.learned_clause)
@@ -342,18 +338,22 @@ where
     }
 }
 
-struct AnalyzerTrail<'a, SearchProc> {
+struct StateForAnalyzer<'a, SearchProc> {
     trail: &'a mut Trail,
     assignment: &'a mut Assignment,
     brancher: &'a mut SearchProc,
 }
 
-impl<SearchProc: Brancher> analysis::Trailable for AnalyzerTrail<'_, SearchProc> {
-    fn pop(&mut self) -> Lit {
+impl<SearchProc: Brancher> analysis::SolverState for StateForAnalyzer<'_, SearchProc> {
+    fn pop_trail(&mut self) -> Lit {
         let lit = self.trail.pop().unwrap();
         self.assignment.unassign(lit);
         self.brancher.on_variable_unassigned(lit.var());
 
         lit
+    }
+
+    fn on_literal_activated(&mut self, lit: Lit) {
+        self.brancher.on_variable_activated(lit.var());
     }
 }

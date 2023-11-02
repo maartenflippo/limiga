@@ -26,24 +26,28 @@ pub struct Analysis<'a> {
     pub backjump_level: usize,
 }
 
-pub trait Trailable {
+pub trait SolverState {
     /// Get the last literal from the trail. The invariants of conflict analysis are such
     /// that this literal always exists when asked for. Hence, if it doesn't, this may panic.
-    fn pop(&mut self) -> Lit;
+    fn pop_trail(&mut self) -> Lit;
+
+    /// Called when a literal is encountered during the analysis procedure.
+    fn on_literal_activated(&mut self, lit: Lit);
 }
+
 
 impl ConflictAnalyzer {
     pub fn grow_to(&mut self, var: Var) {
         self.seen.resize(var.code() as usize + 1, false);
     }
 
-    pub fn analyze<Trail: Trailable>(
+    pub fn analyze<State: SolverState>(
         &mut self,
         empty_clause: ClauseRef,
         clauses: &ClauseDb,
         implication_graph: &ImplicationGraph,
         search_tree: &SearchTree,
-        trail: &mut Trail,
+        state: &mut State,
     ) -> Analysis {
         trace!("analyzing...");
 
@@ -74,7 +78,9 @@ impl ConflictAnalyzer {
                 let q_decision_level = search_tree.decision_level(q.var());
 
                 if !self.seen[q.var().code() as usize] {
+                    state.on_literal_activated(q);
                     self.seen.set(q.var().code() as usize, true);
+
                     if q_decision_level == search_tree.depth() {
                         counter += 1;
                     } else if q_decision_level > 0 {
@@ -85,7 +91,7 @@ impl ConflictAnalyzer {
             }
 
             loop {
-                let lit = trail.pop();
+                let lit = state.pop_trail();
                 confl = implication_graph.reason(lit);
                 p = Some(lit);
 

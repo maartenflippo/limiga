@@ -6,6 +6,7 @@ use crate::{
     brancher::Brancher,
     clause::{ClauseDb, ClauseRef},
     lit::{Lit, Var},
+    preprocessor::{ClausePreProcessor, PreProcessedClause},
     storage::KeyedVec,
     termination::Terminator,
     trail::Trail,
@@ -15,6 +16,7 @@ pub struct Solver<SearchProc, Timer> {
     brancher: SearchProc,
     timer: Timer,
 
+    preprocessor: ClausePreProcessor,
     clauses: ClauseDb,
     learned_clause_buffer: Vec<Lit>,
     decision_level: usize,
@@ -55,6 +57,7 @@ impl<SearchProc, Timer> Solver<SearchProc, Timer> {
             next_propagation_idx: 0,
             watch_list: Default::default(),
             next_var_code: 0,
+            preprocessor: Default::default(),
         }
     }
 }
@@ -63,32 +66,40 @@ impl<SearchProc, Timer> Solver<SearchProc, Timer>
 where
     SearchProc: Brancher,
 {
-    pub fn add_clause(&mut self, lits: impl AsRef<[Lit]>) {
+    pub fn add_clause(&mut self, lits: impl IntoIterator<Item = Lit>) {
         if self.state == State::ConflictAtRoot {
             return;
         }
 
-        let lits = lits.as_ref();
+        let root_assignment = {
+            let lits = match self.preprocessor.preprocess(lits, &self.assignment) {
+                PreProcessedClause::Satisfiable => return,
+                PreProcessedClause::Lits(lits) => lits,
+            };
 
-        if lits.is_empty() {
-            self.state = State::ConflictAtRoot;
-            return;
-        }
-
-        if lits.len() == 1 {
-            if !self.enqueue(lits[0], ClauseRef::default()) {
+            if lits.is_empty() {
                 self.state = State::ConflictAtRoot;
+                return;
             }
 
-            trace!("adding clause {lits:?} as assignment");
-        } else {
-            let clause_ref = self.clauses.add_clause(lits);
-            trace!("adding clause {lits:?} with id {clause_ref:?}");
+            if lits.len() > 1 {
+                let clause_ref = self.clauses.add_clause(lits);
+                trace!("adding clause {lits:?} with id {clause_ref:?}");
 
-            let clause = &self.clauses[clause_ref];
-            self.watch_list[clause.head[0]].push(clause_ref);
-            self.watch_list[clause.head[1]].push(clause_ref);
+                let clause = &self.clauses[clause_ref];
+                self.watch_list[clause.head[0]].push(clause_ref);
+                self.watch_list[clause.head[1]].push(clause_ref);
+                return;
+            }
+
+            lits[0]
+        };
+
+        if !self.enqueue(root_assignment, ClauseRef::default()) {
+            self.state = State::ConflictAtRoot;
         }
+
+        trace!("adding clause [{root_assignment:?}] as assignment");
     }
 
     pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {

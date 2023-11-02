@@ -63,7 +63,7 @@ impl TryFrom<u32> for Var {
 }
 
 /// A literal is a signed boolean variable, either positive or negative.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Lit(u32);
 

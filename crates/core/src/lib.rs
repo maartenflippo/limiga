@@ -6,3 +6,4 @@ pub mod solver;
 pub mod storage;
 pub mod termination;
 pub mod trail;
+mod preprocessor;

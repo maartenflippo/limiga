@@ -1,3 +1,5 @@
+mod termination;
+
 use std::{fmt::Write, fs::File, num::NonZeroI32, path::Path, time::Duration};
 
 use limiga_core::{
@@ -7,6 +9,7 @@ use limiga_core::{
     termination::TimeBudget,
 };
 use limiga_dimacs::DimacsSink;
+use termination::{OrTerminator, SignalTerminator};
 use thiserror::Error;
 
 pub struct Assignment {
@@ -37,7 +40,10 @@ pub fn run_solver(
         .map(TimeBudget::starting_now)
         .unwrap_or(TimeBudget::infinite());
 
-    let mut solver = Solver::new(VsidsBrancher::new(0.95), timer);
+    let signal_terminator = SignalTerminator::register();
+    let terminator = OrTerminator::new(timer, signal_terminator);
+
+    let mut solver = Solver::new(VsidsBrancher::new(0.95), terminator);
     let mut sink = limiga_dimacs::parse_cnf(file, |header| {
         let vars = solver
             .new_lits()

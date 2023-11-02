@@ -1,12 +1,14 @@
-use bitvec::vec::BitVec;
 use log::trace;
 
 use crate::{
+    analysis::{self, ConflictAnalyzer},
     assignment::Assignment,
     brancher::Brancher,
     clause::{ClauseDb, ClauseRef},
+    implication_graph::ImplicationGraph,
     lit::{Lit, Var},
     preprocessor::{ClausePreProcessor, PreProcessedClause},
+    search_tree::SearchTree,
     storage::KeyedVec,
     termination::Terminator,
     trail::Trail,
@@ -17,16 +19,14 @@ pub struct Solver<SearchProc, Timer> {
     timer: Timer,
 
     preprocessor: ClausePreProcessor,
+    analyzer: ConflictAnalyzer,
     clauses: ClauseDb,
-    learned_clause_buffer: Vec<Lit>,
-    decision_level: usize,
-    seen: BitVec,
+    implication_graph: ImplicationGraph,
+    search_tree: SearchTree,
     state: State,
 
     trail: Trail,
     assignment: Assignment,
-    reasons: KeyedVec<Lit, ClauseRef>,
-    decided_at: KeyedVec<Lit, usize>,
 
     next_propagation_idx: usize,
     watch_list: KeyedVec<Lit, Vec<ClauseRef>>,
@@ -46,18 +46,16 @@ impl<SearchProc, Timer> Solver<SearchProc, Timer> {
             brancher,
             timer,
             clauses: Default::default(),
-            learned_clause_buffer: Default::default(),
-            decision_level: Default::default(),
-            seen: Default::default(),
+            search_tree: Default::default(),
             state: Default::default(),
             trail: Default::default(),
             assignment: Default::default(),
-            reasons: Default::default(),
-            decided_at: Default::default(),
             next_propagation_idx: 0,
             watch_list: Default::default(),
             next_var_code: 0,
             preprocessor: Default::default(),
+            analyzer: Default::default(),
+            implication_graph: Default::default(),
         }
     }
 }
@@ -113,75 +111,10 @@ where
 
         self.trail.enqueue(lit);
         self.assignment.assign(lit);
-        self.reasons[lit] = reason;
-        self.decided_at[lit] = self.decision_level;
+        self.implication_graph.add(lit, reason);
+        self.search_tree.register_assignment(lit);
 
         true
-    }
-
-    fn analyze(&mut self, empty_clause: ClauseRef) -> usize {
-        trace!("analyzing...");
-
-        self.learned_clause_buffer.clear();
-        self.seen.iter_mut().for_each(|mut v| *v = false);
-
-        let mut p = None;
-        let mut confl = empty_clause;
-
-        // Leave space for the asserting literal.
-        self.learned_clause_buffer
-            .push(Lit::positive(unsafe { Var::new_unchecked(0) }));
-
-        let mut backtrack_to = 0;
-        let mut counter = 0;
-
-        loop {
-            let p_reason = &self.clauses[confl];
-            let start_idx = if let Some(p) = p {
-                assert_eq!(p, p_reason[0]);
-                1
-            } else {
-                0
-            };
-
-            for j in start_idx..p_reason.len() {
-                let q = !p_reason[j];
-                let q_decision_level = self.decided_at[q];
-
-                if !self.seen[q.var().code() as usize] {
-                    self.seen.set(q.var().code() as usize, true);
-                    if self.decided_at[q] == self.decision_level {
-                        counter += 1;
-                    } else if q_decision_level > 0 {
-                        self.learned_clause_buffer.push(!q);
-                        backtrack_to = usize::max(backtrack_to, q_decision_level);
-                    }
-                }
-            }
-
-            loop {
-                p = Some(self.trail[self.trail.len() - 1]);
-                confl = self.reasons[p.unwrap()];
-
-                self.undo_one();
-
-                if self.seen[p.unwrap().var().code() as usize] {
-                    break;
-                }
-            }
-
-            counter -= 1;
-
-            if counter == 0 {
-                break;
-            }
-        }
-
-        self.learned_clause_buffer[0] = !(p.unwrap());
-
-        trace!("learned clause = {:?}", self.learned_clause_buffer);
-
-        backtrack_to
     }
 
     fn backtrack_to(&mut self, decision_level: usize) {
@@ -190,7 +123,7 @@ where
             self.brancher.on_variable_unassigned(lit.var());
         });
 
-        self.decision_level = decision_level;
+        self.search_tree.cut(decision_level);
         self.next_propagation_idx = self.trail.len();
     }
 
@@ -271,13 +204,6 @@ where
 
         self.enqueue(lit_to_propagate, clause_ref)
     }
-
-    fn undo_one(&mut self) {
-        if let Some(lit) = self.trail.pop() {
-            self.assignment.unassign(lit);
-            self.brancher.on_variable_unassigned(lit.var());
-        }
-    }
 }
 
 impl<SearchProc, Timer> Solver<SearchProc, Timer>
@@ -293,28 +219,48 @@ where
         while !self.timer.should_stop() {
             match self.propagate() {
                 Some(conflict) => {
-                    trace!("conflict at dl {}", self.decision_level);
+                    trace!("conflict at dl {}", self.search_tree.depth());
 
-                    if self.decision_level == 0 {
+                    if self.search_tree.is_at_root() {
                         return SolveResult::Unsatisfiable;
                     }
 
-                    let backjump_level = self.analyze(conflict);
+                    let (literal_to_enqueue, reason, backjump_level) = {
+                        let mut trail = AnalyzerTrail {
+                            trail: &mut self.trail,
+                            assignment: &mut self.assignment,
+                            brancher: &mut self.brancher,
+                        };
+
+                        let analysis = self.analyzer.analyze(
+                            conflict,
+                            &self.clauses,
+                            &self.implication_graph,
+                            &self.search_tree,
+                            &mut trail,
+                        );
+
+                        for lit in analysis.learned_clause.iter() {
+                            self.brancher.on_variable_activated(lit.var());
+                        }
+
+                        let clause_ref = if analysis.learned_clause.len() > 1 {
+                            self.clauses.add_clause(analysis.learned_clause)
+                        } else {
+                            ClauseRef::default()
+                        };
+
+                        (
+                            analysis.learned_clause[0],
+                            clause_ref,
+                            analysis.backjump_level,
+                        )
+                    };
 
                     self.backtrack_to(backjump_level);
 
-                    for lit in self.learned_clause_buffer.iter() {
-                        self.brancher.on_variable_activated(lit.var());
-                    }
-
-                    let clause_ref = if self.learned_clause_buffer.len() > 1 {
-                        self.clauses.add_clause(&self.learned_clause_buffer)
-                    } else {
-                        ClauseRef::default()
-                    };
-
                     assert!(
-                        self.enqueue(self.learned_clause_buffer[0], clause_ref),
+                        self.enqueue(literal_to_enqueue, reason),
                         "conflicting asserting literal"
                     );
 
@@ -323,7 +269,7 @@ where
 
                 None => {
                     self.trail.push();
-                    self.decision_level += 1;
+                    self.search_tree.branch();
 
                     if let Some(decision) = self.brancher.next_decision(&self.assignment) {
                         trace!("decided {decision:?}");
@@ -385,9 +331,10 @@ where
 
         self.solver.brancher.on_new_var(var);
         self.solver.assignment.grow_to(var);
-        self.solver.reasons.grow_to(Lit::positive(var));
-        self.solver.decided_at.grow_to(Lit::positive(var));
+        self.solver.implication_graph.grow_to(var);
+        self.solver.search_tree.grow_to(var);
         self.solver.watch_list.grow_to(Lit::positive(var));
+        self.solver.analyzer.grow_to(var);
 
         self.solver.next_var_code += 1;
 
@@ -395,10 +342,18 @@ where
     }
 }
 
-impl<SearchProc, Timer> Drop for NewLitIterator<'_, SearchProc, Timer> {
-    fn drop(&mut self) {
-        self.solver
-            .seen
-            .resize_with(self.solver.next_var_code as usize, |_| false);
+struct AnalyzerTrail<'a, SearchProc> {
+    trail: &'a mut Trail,
+    assignment: &'a mut Assignment,
+    brancher: &'a mut SearchProc,
+}
+
+impl<SearchProc: Brancher> analysis::Trailable for AnalyzerTrail<'_, SearchProc> {
+    fn pop(&mut self) -> Lit {
+        let lit = self.trail.pop().unwrap();
+        self.assignment.unassign(lit);
+        self.brancher.on_variable_unassigned(lit.var());
+
+        lit
     }
 }

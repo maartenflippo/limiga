@@ -103,7 +103,7 @@ mod tests {
     #[test]
     fn a_long_clause_is_correctly_iterated() {
         let lits = unsafe { [lit!(1), lit!(2), lit!(-3)] };
-        let clause = LongClause::new(&lits);
+        let clause = LongClause::new(lits);
 
         assert_eq!(lits.to_vec(), clause.iter().copied().collect::<Vec<_>>());
     }

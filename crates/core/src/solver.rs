@@ -101,7 +101,10 @@ where
     }
 
     pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {
-        NewLitIterator { solver: self }
+        NewLitIterator {
+            solver: self,
+            has_introduced_new_literal: false,
+        }
     }
 
     fn enqueue(&mut self, lit: Lit, reason: ClauseRef) -> bool {
@@ -315,6 +318,7 @@ impl Solution<'_> {
 
 struct NewLitIterator<'a, SearchProc, Timer> {
     solver: &'a mut Solver<SearchProc, Timer>,
+    has_introduced_new_literal: bool,
 }
 
 impl<SearchProc, Timer> Iterator for NewLitIterator<'_, SearchProc, Timer>
@@ -326,16 +330,26 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let var = Var::try_from(self.solver.next_var_code).expect("valid var code");
         let lit = Lit::positive(var);
-
         self.solver.brancher.on_new_var(var);
-        self.solver.assignment.grow_to(var);
-        self.solver.implication_graph.grow_to(var);
-        self.solver.search_tree.grow_to(var);
-        self.solver.watch_list.grow_to(Lit::positive(var));
-        self.solver.analyzer.grow_to(var);
 
         self.solver.next_var_code += 1;
+        self.has_introduced_new_literal = true;
 
         Some(lit)
+    }
+}
+
+impl<SearchProc, Timer> Drop for NewLitIterator<'_, SearchProc, Timer> {
+    fn drop(&mut self) {
+        if self.has_introduced_new_literal {
+            let last_var = Var::try_from(self.solver.next_var_code - 1)
+                .expect("was created successfully previously as well");
+
+            self.solver.assignment.grow_to(last_var);
+            self.solver.implication_graph.grow_to(last_var);
+            self.solver.search_tree.grow_to(last_var);
+            self.solver.watch_list.grow_to(Lit::positive(last_var));
+            self.solver.analyzer.grow_to(last_var);
+        }
     }
 }

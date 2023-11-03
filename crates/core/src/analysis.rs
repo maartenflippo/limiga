@@ -21,6 +21,8 @@ pub struct ConflictAnalyzer {
     seen: KeyedVec<Var, bool>,
     /// Variables which have been seen during conflict analysis.
     to_clear: Vec<Var>,
+    /// The DFS stack for clause minimization.
+    stack: Vec<Lit>,
 }
 
 /// The result of conflict analysis.
@@ -87,8 +89,10 @@ impl ConflictAnalyzer {
             }
 
             // Add the reason of the propagated literal to the clause.
-            confl = implication_graph.reason(lit);
+            confl = implication_graph.reason(lit.var());
         }
+
+        self.minimize_clause(clauses, implication_graph, search_tree);
 
         // Reset the seen state for any variable we encountered during analysis.
         for var in self.to_clear.drain(..) {
@@ -131,6 +135,61 @@ impl ConflictAnalyzer {
             } else {
                 self.buffer.push(lit);
             }
+        }
+    }
+
+    fn minimize_clause(
+        &mut self,
+        clauses: &ClauseDb,
+        implication_graph: &ImplicationGraph,
+        search_tree: &SearchTree,
+    ) {
+        // we always keep the first literal
+        let mut idx = 0;
+
+        'next_lit: while idx + 1 < self.buffer.len() {
+            idx += 1;
+
+            let lit = self.buffer[idx];
+
+            if implication_graph.reason(lit.var()) == ClauseRef::default() {
+                continue;
+            }
+
+            // Start the DFS
+            self.stack.clear();
+            self.stack.push(!lit);
+
+            // Used to remember which var_flags are set during this DFS
+            let top = self.to_clear.len();
+
+            while let Some(lit) = self.stack.pop() {
+                let reason = implication_graph.reason(lit.var());
+
+                for &reason_lit in clauses[reason].iter() {
+                    let reason_level = search_tree.decision_level(reason_lit.var());
+
+                    if !self.seen[reason_lit.var()] && reason_level > 0 {
+                        // We haven't established reason_lit to be redundant, haven't visited it yet and
+                        // it's not implied by unit clauses.
+
+                        if implication_graph.reason(reason_lit.var()) == ClauseRef::default() {
+                            // reason_lit is a decision not in the clause
+                            // Reset the var_flags set during _this_ DFS.
+                            for var in self.to_clear.drain(top..) {
+                                self.seen[var] = false;
+                            }
+                            continue 'next_lit;
+                        } else {
+                            self.seen[reason_lit.var()] = true;
+                            self.to_clear.push(reason_lit.var());
+                            self.stack.push(!reason_lit);
+                        }
+                    }
+                }
+            }
+
+            self.buffer.swap_remove(idx);
         }
     }
 }

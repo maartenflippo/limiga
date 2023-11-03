@@ -114,7 +114,7 @@ where
 
         self.trail.enqueue(lit);
         self.assignment.assign(lit);
-        self.implication_graph.add(lit, reason);
+        self.implication_graph.add(lit.var(), reason);
         self.search_tree.register_assignment(lit);
 
         if reason != ClauseRef::default() {

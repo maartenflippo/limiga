@@ -1,7 +1,7 @@
 use log::trace;
 
 use crate::{
-    analysis::{self, ConflictAnalyzer},
+    analysis::ConflictAnalyzer,
     assignment::Assignment,
     brancher::Brancher,
     clause::{ClauseDb, ClauseRef},
@@ -113,6 +113,13 @@ where
         self.assignment.assign(lit);
         self.implication_graph.add(lit, reason);
         self.search_tree.register_assignment(lit);
+
+        if reason != ClauseRef::default() {
+            assert_eq!(
+                lit, self.clauses[reason][0],
+                "Propagated literals should be the first literal in the clause."
+            );
+        }
 
         true
     }
@@ -226,18 +233,13 @@ where
                     }
 
                     let (literal_to_enqueue, reason, backjump_level) = {
-                        let mut state = StateForAnalyzer {
-                            trail: &mut self.trail,
-                            assignment: &mut self.assignment,
-                            brancher: &mut self.brancher,
-                        };
-
                         let analysis = self.analyzer.analyze(
                             conflict,
                             &self.clauses,
                             &self.implication_graph,
                             &self.search_tree,
-                            &mut state,
+                            &self.trail,
+                            &mut self.brancher,
                         );
 
                         let clause_ref = if analysis.learned_clause.len() > 1 {
@@ -335,25 +337,5 @@ where
         self.solver.next_var_code += 1;
 
         Some(lit)
-    }
-}
-
-struct StateForAnalyzer<'a, SearchProc> {
-    trail: &'a mut Trail,
-    assignment: &'a mut Assignment,
-    brancher: &'a mut SearchProc,
-}
-
-impl<SearchProc: Brancher> analysis::SolverState for StateForAnalyzer<'_, SearchProc> {
-    fn pop_trail(&mut self) -> Lit {
-        let lit = self.trail.pop().unwrap();
-        self.assignment.unassign(lit);
-        self.brancher.on_variable_unassigned(lit.var());
-
-        lit
-    }
-
-    fn on_literal_activated(&mut self, lit: Lit) {
-        self.brancher.on_variable_activated(lit.var());
     }
 }

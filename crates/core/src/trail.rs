@@ -35,8 +35,8 @@ impl Trail {
         }
     }
 
-    pub fn pop(&mut self) -> Option<Lit> {
-        self.trail.pop()
+    pub fn iter(&self) -> impl DoubleEndedIterator + Iterator<Item = Lit> + '_ {
+        self.trail.iter().copied()
     }
 }
 

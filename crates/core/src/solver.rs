@@ -281,7 +281,7 @@ where
                     } else {
                         return SolveResult::Satisfiable(Solution {
                             assignment: &mut self.assignment,
-                            last_var_code: self.next_var_code - 1,
+                            next_new_var_code: self.next_var_code,
                         });
                     }
                 }
@@ -301,9 +301,9 @@ pub enum SolveResult<'solver> {
     Unknown,
 }
 
-pub struct Solution<'solver> {
-    assignment: &'solver mut Assignment,
-    last_var_code: u32,
+pub struct Solution<'assignment> {
+    assignment: &'assignment mut Assignment,
+    next_new_var_code: u32,
 }
 
 impl Solution<'_> {
@@ -312,7 +312,7 @@ impl Solution<'_> {
     }
 
     pub fn vars(&self) -> impl Iterator<Item = Var> + '_ {
-        (0..=self.last_var_code).map(|code| Var::try_from(code).unwrap())
+        (0..self.next_new_var_code).map(|code| Var::try_from(code).unwrap())
     }
 }
 

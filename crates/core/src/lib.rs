@@ -1,12 +1,13 @@
+mod analysis;
 pub mod assignment;
 pub mod brancher;
 pub mod clause;
+mod implication_graph;
 pub mod lit;
+mod preprocessor;
+pub mod propagation;
+mod search_tree;
 pub mod solver;
 pub mod storage;
 pub mod termination;
 pub mod trail;
-mod preprocessor;
-mod analysis;
-mod implication_graph;
-mod search_tree;

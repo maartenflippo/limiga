@@ -8,8 +8,9 @@ use crate::{
     implication_graph::ImplicationGraph,
     lit::{Lit, Var},
     preprocessor::{ClausePreProcessor, PreProcessedClause},
+    propagation::{Propagator, PropagatorFactory, PropagatorId, VariableRegistrar},
     search_tree::SearchTree,
-    storage::KeyedVec,
+    storage::{Arena, KeyedVec},
     termination::Terminator,
     trail::Trail,
 };
@@ -98,6 +99,17 @@ where
         }
 
         trace!("adding clause [{root_assignment:?}] as assignment");
+    }
+
+    // Note: The Event type parameter will be part of the solver instead.
+    pub fn add_propagator<Event>(factory: impl PropagatorFactory<Event>) {
+        // NOTE: This is to prototype the propagator API, of course the propagators will be stored
+        // in `self`.
+        let mut arena: Arena<PropagatorId, Box<dyn Propagator<Event>>> = Arena::default();
+        let mut reactor = VariableRegistrar::default();
+
+        let propagator = factory.create(&mut reactor);
+        arena.alloc(Box::new(propagator));
     }
 
     pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {

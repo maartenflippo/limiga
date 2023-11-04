@@ -61,3 +61,29 @@ impl<Key: Indexer, Value> IndexMut<Key> for KeyedVec<Key, Value> {
         index.index_mut(&mut self.values)
     }
 }
+
+pub struct Arena<Id, Value> {
+    buffer: Vec<Value>,
+    id: PhantomData<Id>,
+}
+
+impl<Id, Value> Default for Arena<Id, Value> {
+    fn default() -> Self {
+        Arena {
+            buffer: vec![],
+            id: PhantomData,
+        }
+    }
+}
+
+impl<Id, Value> Arena<Id, Value>
+where
+    Id: From<usize>,
+{
+    pub fn alloc(&mut self, value: Value) -> Id {
+        self.buffer.push(value);
+
+        let id = self.buffer.len() - 1;
+        Id::from(id)
+    }
+}

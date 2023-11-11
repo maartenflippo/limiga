@@ -6,6 +6,15 @@ pub trait Terminator {
     fn should_stop(&self) -> bool;
 }
 
+/// A terminator that will never stop the search.
+pub struct Indefinite;
+
+impl Terminator for Indefinite {
+    fn should_stop(&self) -> bool {
+        false
+    }
+}
+
 /// A time budget can be used to stop the solver after some duration.
 pub struct TimeBudget {
     end_time: Option<Instant>,

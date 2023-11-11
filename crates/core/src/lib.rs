@@ -1,13 +1,19 @@
-mod analysis;
+pub mod analysis;
 pub mod assignment;
 pub mod brancher;
 pub mod clause;
-mod implication_graph;
+pub mod domains;
+pub mod implication_graph;
+pub mod integer;
 pub mod lit;
-mod preprocessor;
+pub mod preprocessor;
 pub mod propagation;
-mod search_tree;
+pub mod search_tree;
 pub mod solver;
 pub mod storage;
 pub mod termination;
 pub mod trail;
+pub mod variable;
+
+#[derive(Debug)]
+pub struct Conflict;

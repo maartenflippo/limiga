@@ -5,33 +5,42 @@ use crate::{
     assignment::Assignment,
     brancher::Brancher,
     clause::{ClauseDb, ClauseRef},
+    domains::{DomainId, DomainStore},
     implication_graph::ImplicationGraph,
     lit::{Lit, Var},
     preprocessor::{ClausePreProcessor, PreProcessedClause},
-    propagation::{Propagator, PropagatorFactory, PropagatorId, VariableRegistrar},
+    propagation::{
+        Context, LitWatch, Propagator, PropagatorFactory, PropagatorId, VariableRegistrar,
+        WatchList,
+    },
     search_tree::SearchTree,
-    storage::{Arena, KeyedVec},
+    storage::{Arena, StaticIndexer},
     termination::Terminator,
     trail::Trail,
 };
 
-pub struct Solver<SearchProc, Timer> {
+pub struct Solver<SearchProc, Domains, Event> {
     brancher: SearchProc,
-    timer: Timer,
 
+    domains: Domains,
     preprocessor: ClausePreProcessor,
     analyzer: ConflictAnalyzer,
     clauses: ClauseDb,
     implication_graph: ImplicationGraph,
     search_tree: SearchTree,
     state: State,
+    propagators: Arena<PropagatorId, Box<dyn Propagator<Domains, Event>>>,
 
     trail: Trail,
     assignment: Assignment,
 
     next_propagation_idx: usize,
-    watch_list: KeyedVec<Lit, Vec<ClauseRef>>,
+    watch_list: WatchList<Event>,
     next_var_code: u32,
+}
+
+pub trait ExtendSolver<Domains, Event> {
+    fn add_propagator(&mut self, factory: impl PropagatorFactory<Domains, Event>) -> bool;
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -41,11 +50,15 @@ enum State {
     ConflictAtRoot,
 }
 
-impl<SearchProc, Timer> Solver<SearchProc, Timer> {
-    pub fn new(brancher: SearchProc, timer: Timer) -> Self {
+impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
+where
+    Domains: Default,
+    Event: StaticIndexer,
+{
+    pub fn new(brancher: SearchProc) -> Self {
         Solver {
             brancher,
-            timer,
+            domains: Default::default(),
             clauses: Default::default(),
             search_tree: Default::default(),
             state: Default::default(),
@@ -57,13 +70,24 @@ impl<SearchProc, Timer> Solver<SearchProc, Timer> {
             preprocessor: Default::default(),
             analyzer: Default::default(),
             implication_graph: Default::default(),
+            propagators: Default::default(),
         }
     }
 }
 
-impl<SearchProc, Timer> Solver<SearchProc, Timer>
+impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event> {
+    pub fn new_domain<Domain>(&mut self, domain: Domain) -> DomainId<Domain>
+    where
+        Domains: DomainStore<Domain>,
+    {
+        self.domains.alloc(domain)
+    }
+}
+
+impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
+    Event: Copy + std::fmt::Debug,
 {
     pub fn add_clause(&mut self, lits: impl IntoIterator<Item = Lit>) {
         if self.state == State::ConflictAtRoot {
@@ -86,8 +110,8 @@ where
                 trace!("adding clause {lits:?} with id {clause_ref:?}");
 
                 let clause = &self.clauses[clause_ref];
-                self.watch_list[clause.head[0]].push(clause_ref);
-                self.watch_list[clause.head[1]].push(clause_ref);
+                self.watch_list[clause.head[0]].push(clause_ref.into());
+                self.watch_list[clause.head[1]].push(clause_ref.into());
                 return;
             }
 
@@ -99,17 +123,6 @@ where
         }
 
         trace!("adding clause [{root_assignment:?}] as assignment");
-    }
-
-    // Note: The Event type parameter will be part of the solver instead.
-    pub fn add_propagator<Event>(factory: impl PropagatorFactory<Event>) {
-        // NOTE: This is to prototype the propagator API, of course the propagators will be stored
-        // in `self`.
-        let mut arena: Arena<PropagatorId, Box<dyn Propagator<Event>>> = Arena::default();
-        let mut reactor = VariableRegistrar::default();
-
-        let propagator = factory.create(&mut reactor);
-        arena.alloc(Box::new(propagator));
     }
 
     pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {
@@ -158,25 +171,47 @@ where
 
             trace!("processing {trail_lit:?}");
 
-            let constraints = std::mem::take(&mut self.watch_list[false_lit]);
+            let watches = std::mem::take(&mut self.watch_list[false_lit]);
 
-            trace!("watched constraints {constraints:?}");
+            trace!("watched constraints {watches:?}");
 
-            for i in 0..constraints.len() {
-                let clause_ref = constraints[i];
+            for i in 0..watches.len() {
+                let watch = watches[i];
 
-                if !self.propagate_clause(clause_ref, false_lit) {
-                    // The clause is conflicting, copy the remaining watches and return the
-                    // appropriate conflict.
+                let conflict = match watch {
+                    LitWatch::Clause(clause_ref) => {
+                        if !self.propagate_clause(clause_ref, false_lit) {
+                            Some(clause_ref)
+                        } else {
+                            None
+                        }
+                    }
+                    LitWatch::Propagator {
+                        propagator_id,
+                        local_id: _,
+                    } => {
+                        let propagator = &mut self.propagators[propagator_id];
+                        let mut ctx = Context::new(&self.assignment, &mut self.domains);
 
-                    for &constraint in constraints.iter().skip(i + 1) {
+                        if let Err(_conflict) = propagator.propagate(&mut ctx) {
+                            Some(todo!())
+                        } else {
+                            None
+                        }
+                    }
+                    LitWatch::DomainEvent { domain_id, event } => todo!(),
+                };
+
+                if let Some(conflict) = conflict {
+                    // Copy the remaining watches back to the literal.
+                    for &constraint in watches.iter().skip(i + 1) {
                         trace!("adding {constraint:?} to the watch list of {false_lit:?}");
                         self.watch_list[false_lit].push(constraint);
                     }
 
                     self.next_propagation_idx = self.trail.len();
 
-                    return Some(clause_ref);
+                    return Some(conflict);
                 }
             }
         }
@@ -197,7 +232,7 @@ where
             // If the 0th watch is true, then clause is already satisfied.
             if self.assignment.value(clause.head[0]) == Some(true) {
                 trace!("clause is satisfied because of 0th literal");
-                self.watch_list[false_lit].push(clause_ref);
+                self.watch_list[false_lit].push(clause_ref.into());
                 return true;
             }
 
@@ -209,13 +244,13 @@ where
                     clause.head[1] = candidate;
                     clause.tail[tail_idx] = false_lit;
 
-                    self.watch_list[clause.head[1]].push(clause_ref);
+                    self.watch_list[clause.head[1]].push(clause_ref.into());
                     return true;
                 }
             }
 
             // The clause is unit under the current assignment.
-            self.watch_list[false_lit].push(clause_ref);
+            self.watch_list[false_lit].push(clause_ref.into());
             clause.head[0]
         };
 
@@ -228,17 +263,17 @@ where
     }
 }
 
-impl<SearchProc, Timer> Solver<SearchProc, Timer>
+impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Timer: Terminator,
+    Event: Copy + std::fmt::Debug,
 {
-    pub fn solve(&mut self) -> SolveResult<'_> {
+    pub fn solve(&mut self, terminator: impl Terminator) -> SolveResult<'_> {
         if self.state == State::ConflictAtRoot {
             return SolveResult::Unsatisfiable;
         }
 
-        while !self.timer.should_stop() {
+        while !terminator.should_stop() {
             match self.propagate() {
                 Some(conflict) => {
                     trace!("conflict at dl {}", self.search_tree.depth());
@@ -328,12 +363,26 @@ impl Solution<'_> {
     }
 }
 
-struct NewLitIterator<'a, SearchProc, Timer> {
-    solver: &'a mut Solver<SearchProc, Timer>,
+impl<SearchProc, Domains, Event> ExtendSolver<Domains, Event>
+    for Solver<SearchProc, Domains, Event>
+{
+    fn add_propagator(&mut self, factory: impl PropagatorFactory<Domains, Event>) -> bool {
+        let slot = self.propagators.new_ref();
+        let mut variable_registrar = VariableRegistrar::new(slot.id(), &mut self.watch_list);
+
+        let propagator = factory.create(&mut variable_registrar);
+        slot.alloc(propagator);
+
+        true
+    }
+}
+
+struct NewLitIterator<'a, SearchProc, Domains, Event> {
+    solver: &'a mut Solver<SearchProc, Domains, Event>,
     has_introduced_new_literal: bool,
 }
 
-impl<SearchProc, Timer> Iterator for NewLitIterator<'_, SearchProc, Timer>
+impl<SearchProc, Domains, Event> Iterator for NewLitIterator<'_, SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
 {
@@ -351,7 +400,7 @@ where
     }
 }
 
-impl<SearchProc, Timer> Drop for NewLitIterator<'_, SearchProc, Timer> {
+impl<SearchProc, Domains, Event> Drop for NewLitIterator<'_, SearchProc, Domains, Event> {
     fn drop(&mut self) {
         if self.has_introduced_new_literal {
             let last_var = Var::try_from(self.solver.next_var_code - 1)

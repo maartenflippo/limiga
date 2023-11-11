@@ -21,6 +21,18 @@ impl<Key, Value> KeyedVec<Key, Value> {
     }
 }
 
+impl<Key: StaticIndexer, Value: Default> KeyedVec<Key, Value> {
+    pub fn with_static_len() -> Self {
+        let mut values = Vec::new();
+        values.resize_with(Key::get_len(), Value::default);
+
+        KeyedVec {
+            key: PhantomData,
+            values,
+        }
+    }
+}
+
 impl<Key: Indexer, Value: Default> KeyedVec<Key, Value> {
     pub fn grow_to(&mut self, key: Key) {
         let minimum_len = key.get_minimum_len() + 1;
@@ -67,6 +79,10 @@ pub struct Arena<Id, Value> {
     id: PhantomData<Id>,
 }
 
+pub struct ArenaSlot<'a, Id, Value> {
+    arena: &'a mut Arena<Id, Value>,
+}
+
 impl<Id, Value> Default for Arena<Id, Value> {
     fn default() -> Self {
         Arena {
@@ -76,14 +92,48 @@ impl<Id, Value> Default for Arena<Id, Value> {
     }
 }
 
-impl<Id, Value> Arena<Id, Value>
+impl<Id, Value> Arena<Id, Value> {
+    pub fn new_ref(&mut self) -> ArenaSlot<'_, Id, Value> {
+        ArenaSlot { arena: self }
+    }
+}
+
+impl<Id, Value> ArenaSlot<'_, Id, Value>
 where
     Id: From<usize>,
 {
-    pub fn alloc(&mut self, value: Value) -> Id {
-        self.buffer.push(value);
+    pub fn alloc(self, value: Value) -> Id {
+        self.arena.buffer.push(value);
 
-        let id = self.buffer.len() - 1;
+        let id = self.arena.buffer.len() - 1;
         Id::from(id)
+    }
+
+    pub fn id(&self) -> Id {
+        Id::from(self.arena.buffer.len())
+    }
+}
+
+impl<Id: Indexer, Value> Index<Id> for Arena<Id, Value> {
+    type Output = Value;
+
+    fn index(&self, index: Id) -> &Self::Output {
+        index.index(&self.buffer)
+    }
+}
+
+impl<Id: Indexer, Value> IndexMut<Id> for Arena<Id, Value> {
+    fn index_mut(&mut self, index: Id) -> &mut Self::Output {
+        index.index_mut(&mut self.buffer)
+    }
+}
+
+pub trait StaticIndexer {
+    fn get_len() -> usize;
+}
+
+impl StaticIndexer for () {
+    fn get_len() -> usize {
+        0
     }
 }

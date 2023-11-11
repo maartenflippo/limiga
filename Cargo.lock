@@ -213,10 +213,18 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "env_logger",
+ "limiga-constraints",
  "limiga-core",
  "limiga-dimacs",
  "signal-hook",
  "thiserror",
+]
+
+[[package]]
+name = "limiga-constraints"
+version = "0.1.0"
+dependencies = [
+ "limiga-core",
 ]
 
 [[package]]
@@ -233,13 +241,6 @@ name = "limiga-dimacs"
 version = "0.1.0"
 dependencies = [
  "thiserror",
-]
-
-[[package]]
-name = "limiga-propagators"
-version = "0.1.0"
-dependencies = [
- "limiga-core",
 ]
 
 [[package]]

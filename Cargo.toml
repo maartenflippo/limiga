@@ -14,6 +14,7 @@ debug = true
 clap = { version = "4.4.5", features = ["derive"] }
 env_logger = "0.10.0"
 limiga-core = { path = "crates/core" }
+limiga-constraints = { path = "crates/constraints" }
 limiga-dimacs = { path = "crates/dimacs" }
 signal-hook = "0.3.17"
 thiserror = { workspace = true }

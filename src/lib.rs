@@ -43,7 +43,7 @@ pub fn run_solver(
     let signal_terminator = SignalTerminator::register();
     let terminator = OrTerminator::new(timer, signal_terminator);
 
-    let mut solver = Solver::new(VsidsBrancher::new(0.95), terminator);
+    let mut solver: Solver<_, (), ()> = Solver::new(VsidsBrancher::new(0.95));
     let mut sink = limiga_dimacs::parse_cnf(file, |header| {
         let vars = solver
             .new_lits()
@@ -55,7 +55,7 @@ pub fn run_solver(
         SolverSink { solver, vars }
     })?;
 
-    match sink.solver.solve() {
+    match sink.solver.solve(terminator) {
         SolveResult::Satisfiable(solution) => Ok(Conclusion::Satisfiable(solution.into())),
         SolveResult::Unsatisfiable => Ok(Conclusion::Unsatisfiable),
         SolveResult::Unknown => Ok(Conclusion::Unknown),
@@ -103,14 +103,15 @@ impl<'a> From<Solution<'a>> for Assignment {
     }
 }
 
-struct SolverSink<SearchProc, Timer> {
-    solver: Solver<SearchProc, Timer>,
+struct SolverSink<SearchProc, Domains, Event> {
+    solver: Solver<SearchProc, Domains, Event>,
     vars: Box<[Var]>,
 }
 
-impl<SearchProc, Timer> DimacsSink for SolverSink<SearchProc, Timer>
+impl<SearchProc, Domains, Event> DimacsSink for SolverSink<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
+    Event: Copy + std::fmt::Debug,
 {
     fn add_clause(&mut self, lits: &[std::num::NonZeroI32]) {
         let lits = lits

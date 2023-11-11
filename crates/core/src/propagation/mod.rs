@@ -1,3 +1,4 @@
+mod queue;
 mod reason;
 mod watch_list;
 
@@ -10,6 +11,7 @@ use crate::{
     storage::Indexer,
     Conflict,
 };
+pub use queue::*;
 pub use reason::*;
 pub use watch_list::*;
 
@@ -104,16 +106,8 @@ impl From<usize> for PropagatorId {
 }
 
 impl Indexer for PropagatorId {
-    fn index<'slice, Value>(&self, slice: &'slice [Value]) -> &'slice Value {
-        &slice[self.0]
-    }
-
-    fn index_mut<'slice, Value>(&self, slice: &'slice mut [Value]) -> &'slice mut Value {
-        &mut slice[self.0]
-    }
-
-    fn get_minimum_len(&self) -> usize {
-        self.0 + 1
+    fn index(&self) -> usize {
+        self.0
     }
 }
 

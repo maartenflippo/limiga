@@ -31,15 +31,7 @@ impl Debug for Var {
 }
 
 impl Indexer for Var {
-    fn index<'slice, Value>(&self, slice: &'slice [Value]) -> &'slice Value {
-        &slice[self.0 as usize]
-    }
-
-    fn index_mut<'slice, Value>(&self, slice: &'slice mut [Value]) -> &'slice mut Value {
-        &mut slice[self.0 as usize]
-    }
-
-    fn get_minimum_len(&self) -> usize {
+    fn index(&self) -> usize {
         self.0 as usize
     }
 }
@@ -109,20 +101,8 @@ impl Debug for Lit {
 }
 
 impl Indexer for Lit {
-    fn index<'slice, Value>(&self, slice: &'slice [Value]) -> &'slice Value {
-        &slice[self.0 as usize]
-    }
-
-    fn index_mut<'slice, Value>(&self, slice: &'slice mut [Value]) -> &'slice mut Value {
-        &mut slice[self.0 as usize]
-    }
-
-    fn get_minimum_len(&self) -> usize {
-        if self.is_positive() {
-            self.0 as usize
-        } else {
-            self.0 as usize + 1
-        }
+    fn index(&self) -> usize {
+        self.0 as usize
     }
 }
 

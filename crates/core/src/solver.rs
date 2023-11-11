@@ -10,8 +10,8 @@ use crate::{
     lit::{Lit, Var},
     preprocessor::{ClausePreProcessor, PreProcessedClause},
     propagation::{
-        Context, LitWatch, Propagator, PropagatorFactory, PropagatorId, VariableRegistrar,
-        WatchList,
+        Context, LitWatch, Propagator, PropagatorFactory, PropagatorId, PropagatorQueue,
+        VariableRegistrar, WatchList,
     },
     search_tree::SearchTree,
     storage::{Arena, StaticIndexer},
@@ -30,6 +30,7 @@ pub struct Solver<SearchProc, Domains, Event> {
     search_tree: SearchTree,
     state: State,
     propagators: Arena<PropagatorId, Box<dyn Propagator<Domains, Event>>>,
+    propagator_queue: PropagatorQueue,
 
     trail: Trail,
     assignment: Assignment,
@@ -71,6 +72,7 @@ where
             analyzer: Default::default(),
             implication_graph: Default::default(),
             propagators: Default::default(),
+            propagator_queue: Default::default(),
         }
     }
 }
@@ -190,14 +192,8 @@ where
                         propagator_id,
                         local_id: _,
                     } => {
-                        let propagator = &mut self.propagators[propagator_id];
-                        let mut ctx = Context::new(&self.assignment, &mut self.domains);
-
-                        if let Err(_conflict) = propagator.propagate(&mut ctx) {
-                            Some(todo!())
-                        } else {
-                            None
-                        }
+                        self.propagator_queue.push(propagator_id);
+                        None
                     }
                     LitWatch::DomainEvent { domain_id, event } => todo!(),
                 };

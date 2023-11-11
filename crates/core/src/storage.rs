@@ -4,10 +4,7 @@ use std::{
 };
 
 pub trait Indexer {
-    fn index<'slice, Value>(&self, slice: &'slice [Value]) -> &'slice Value;
-    fn index_mut<'slice, Value>(&self, slice: &'slice mut [Value]) -> &'slice mut Value;
-
-    fn get_minimum_len(&self) -> usize;
+    fn index(&self) -> usize;
 }
 
 pub struct KeyedVec<Key, Value> {
@@ -35,7 +32,7 @@ impl<Key: StaticIndexer, Value: Default> KeyedVec<Key, Value> {
 
 impl<Key: Indexer, Value: Default> KeyedVec<Key, Value> {
     pub fn grow_to(&mut self, key: Key) {
-        let minimum_len = key.get_minimum_len() + 1;
+        let minimum_len = key.index() + 1;
         if self.values.len() < minimum_len {
             self.values.resize_with(minimum_len, Value::default);
         }
@@ -44,7 +41,7 @@ impl<Key: Indexer, Value: Default> KeyedVec<Key, Value> {
 
 impl<Key: Indexer, Value: Clone> KeyedVec<Key, Value> {
     pub fn grow_to_with(&mut self, key: Key, value: Value) {
-        let minimum_len = key.get_minimum_len() + 1;
+        let minimum_len = key.index() + 1;
         if self.values.len() < minimum_len {
             self.values.resize_with(minimum_len, || value.clone());
         }
@@ -63,14 +60,14 @@ impl<Key, Value> Default for KeyedVec<Key, Value> {
 impl<Key: Indexer, Value> Index<Key> for KeyedVec<Key, Value> {
     type Output = Value;
 
-    fn index(&self, index: Key) -> &Self::Output {
-        index.index(&self.values)
+    fn index(&self, key: Key) -> &Self::Output {
+        &self.values[key.index()]
     }
 }
 
 impl<Key: Indexer, Value> IndexMut<Key> for KeyedVec<Key, Value> {
-    fn index_mut(&mut self, index: Key) -> &mut Self::Output {
-        index.index_mut(&mut self.values)
+    fn index_mut(&mut self, key: Key) -> &mut Self::Output {
+        &mut self.values[key.index()]
     }
 }
 
@@ -117,14 +114,14 @@ where
 impl<Id: Indexer, Value> Index<Id> for Arena<Id, Value> {
     type Output = Value;
 
-    fn index(&self, index: Id) -> &Self::Output {
-        index.index(&self.buffer)
+    fn index(&self, id: Id) -> &Self::Output {
+        &self.buffer[id.index()]
     }
 }
 
 impl<Id: Indexer, Value> IndexMut<Id> for Arena<Id, Value> {
-    fn index_mut(&mut self, index: Id) -> &mut Self::Output {
-        index.index_mut(&mut self.buffer)
+    fn index_mut(&mut self, id: Id) -> &mut Self::Output {
+        &mut self.buffer[id.index()]
     }
 }
 

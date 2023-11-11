@@ -72,30 +72,13 @@ impl From<IntEvent> for SolverEvent {
 }
 
 impl Indexer for SolverEvent {
-    fn index<'slice, Value>(&self, slice: &'slice [Value]) -> &'slice Value {
-        let idx = match *self {
+    fn index(&self) -> usize {
+        match *self {
             SolverEvent::LitEvent(LitEvent::FixedTrue) => 0,
             SolverEvent::LitEvent(LitEvent::FixedFalse) => 1,
             SolverEvent::IntEvent(IntEvent::LowerBound) => 2,
             SolverEvent::IntEvent(IntEvent::UpperBound) => 3,
-        };
-
-        &slice[idx]
-    }
-
-    fn index_mut<'slice, Value>(&self, slice: &'slice mut [Value]) -> &'slice mut Value {
-        let idx = match *self {
-            SolverEvent::LitEvent(LitEvent::FixedTrue) => 0,
-            SolverEvent::LitEvent(LitEvent::FixedFalse) => 1,
-            SolverEvent::IntEvent(IntEvent::LowerBound) => 2,
-            SolverEvent::IntEvent(IntEvent::UpperBound) => 3,
-        };
-
-        &mut slice[idx]
-    }
-
-    fn get_minimum_len(&self) -> usize {
-        Self::get_len()
+        }
     }
 }
 

@@ -3,6 +3,7 @@ use crate::{
     clause::{ClauseDb, ClauseRef},
     implication_graph::ImplicationGraph,
     lit::{Lit, Var},
+    propagation::Reason,
     search_tree::SearchTree,
     storage::KeyedVec,
     trail::Trail,
@@ -41,7 +42,7 @@ impl ConflictAnalyzer {
     pub fn analyze<SearchProc: Brancher>(
         &mut self,
         mut confl: ClauseRef,
-        clauses: &ClauseDb,
+        clauses: &mut ClauseDb,
         implication_graph: &ImplicationGraph,
         search_tree: &SearchTree,
         trail: &Trail,
@@ -89,7 +90,11 @@ impl ConflictAnalyzer {
             }
 
             // Add the reason of the propagated literal to the clause.
-            confl = implication_graph.reason(lit.var());
+            confl = match implication_graph.reason(lit.var()) {
+                Reason::Decision => unreachable!(),
+                Reason::Clause(clause_ref) => *clause_ref,
+                Reason::Explanation(lits) => clauses.add_explanation_clause(lits),
+            };
         }
 
         self.minimize_clause(clauses, implication_graph, search_tree);
@@ -152,7 +157,7 @@ impl ConflictAnalyzer {
 
             let lit = self.buffer[idx];
 
-            if implication_graph.reason(lit.var()) == ClauseRef::default() {
+            if implication_graph.reason(lit.var()) == &Reason::Decision {
                 continue;
             }
 
@@ -164,16 +169,20 @@ impl ConflictAnalyzer {
             let top = self.to_clear.len();
 
             while let Some(lit) = self.stack.pop() {
-                let reason = implication_graph.reason(lit.var());
+                let reason_lits = match implication_graph.reason(lit.var()) {
+                    Reason::Decision => unreachable!(),
+                    Reason::Clause(clause_ref) => clauses[*clause_ref].lits(),
+                    Reason::Explanation(lits) => lits,
+                };
 
-                for &reason_lit in clauses[reason].iter() {
+                for &reason_lit in reason_lits {
                     let reason_level = search_tree.decision_level(reason_lit.var());
 
                     if !self.seen[reason_lit.var()] && reason_level > 0 {
                         // We haven't established reason_lit to be redundant, haven't visited it yet and
                         // it's not implied by unit clauses.
 
-                        if implication_graph.reason(reason_lit.var()) == ClauseRef::default() {
+                        if implication_graph.reason(reason_lit.var()) == &Reason::Decision {
                             // reason_lit is a decision not in the clause
                             // Reset the var_flags set during _this_ DFS.
                             for var in self.to_clear.drain(top..) {

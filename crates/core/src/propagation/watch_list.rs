@@ -11,26 +11,31 @@ use super::{DomainEvent, LitEvent, LocalId, PropagatorId, PropagatorVar, SDomain
 
 pub struct WatchList<Event> {
     literal_watches: KeyedVec<Lit, Vec<LitWatch<Event>>>,
-    domain_event_watches: KeyedVec<Event, Vec<PropagatorWatch>>,
+    domain_event_watches: KeyedVec<UntypedDomainId, KeyedVec<Event, Vec<PropagatorWatch>>>,
 }
 
 pub struct PropagatorWatch {
-    propagator_id: PropagatorId,
-    local_id: LocalId,
+    pub propagator_id: PropagatorId,
+    pub local_id: LocalId,
 }
 
 impl<Event: StaticIndexer> Default for WatchList<Event> {
     fn default() -> Self {
         WatchList {
             literal_watches: KeyedVec::default(),
-            domain_event_watches: KeyedVec::with_static_len(),
+            domain_event_watches: KeyedVec::default(),
         }
     }
 }
 
-impl<Event> WatchList<Event> {
-    pub fn grow_to(&mut self, lit: Lit) {
+impl<Event: StaticIndexer> WatchList<Event> {
+    pub fn grow_to_lit(&mut self, lit: Lit) {
         self.literal_watches.grow_to(lit);
+    }
+
+    pub fn grow_to_domain(&mut self, domain_id: UntypedDomainId) {
+        self.domain_event_watches.grow_to(domain_id);
+        self.domain_event_watches[domain_id] = KeyedVec::with_static_len();
     }
 
     pub fn add_lit_watch(&mut self, lit: Lit, watch: LitWatch<Event>) {
@@ -39,8 +44,13 @@ impl<Event> WatchList<Event> {
 }
 
 impl<Event: Indexer> WatchList<Event> {
-    pub fn add_event_watch(&mut self, event: Event, watch: PropagatorWatch) {
-        self.domain_event_watches[event].push(watch);
+    pub fn add_event_watch(
+        &mut self,
+        domain_id: UntypedDomainId,
+        event: Event,
+        watch: PropagatorWatch,
+    ) {
+        self.domain_event_watches[domain_id][event].push(watch);
     }
 }
 
@@ -55,6 +65,14 @@ impl<Event> Index<Lit> for WatchList<Event> {
 impl<Event> IndexMut<Lit> for WatchList<Event> {
     fn index_mut(&mut self, index: Lit) -> &mut Self::Output {
         &mut self.literal_watches[index]
+    }
+}
+
+impl<Event: Indexer> Index<(UntypedDomainId, Event)> for WatchList<Event> {
+    type Output = [PropagatorWatch];
+
+    fn index(&self, (domain_id, event): (UntypedDomainId, Event)) -> &Self::Output {
+        self.domain_event_watches[domain_id][event].as_slice()
     }
 }
 
@@ -131,17 +149,19 @@ impl Watchable for Lit {
         propagator_id: PropagatorId,
         local_id: LocalId,
         event: Self::TypedEvent,
-    ) {
+    ) where
+        Event: DomainEvent<Self::TypedEvent>,
+    {
         match event {
             LitEvent::FixedTrue => watch_list.add_lit_watch(
-                *self,
+                !*self,
                 LitWatch::Propagator {
                     propagator_id,
                     local_id,
                 },
             ),
             LitEvent::FixedFalse => watch_list.add_lit_watch(
-                !*self,
+                *self,
                 LitWatch::Propagator {
                     propagator_id,
                     local_id,
@@ -167,6 +187,7 @@ where
         Event: DomainEvent<Self::TypedEvent>,
     {
         watch_list.add_event_watch(
+            self.untyped_id,
             event.into(),
             PropagatorWatch {
                 propagator_id,

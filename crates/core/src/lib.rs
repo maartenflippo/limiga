@@ -14,6 +14,3 @@ pub mod storage;
 pub mod termination;
 pub mod trail;
 pub mod variable;
-
-#[derive(Debug)]
-pub struct Conflict;

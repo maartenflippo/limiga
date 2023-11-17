@@ -6,10 +6,12 @@ use std::{marker::PhantomData, ops::Deref};
 
 use crate::{
     assignment::Assignment,
-    domains::{DomainId, DomainStore},
+    domains::{Conflict, DomainId, DomainStore, EnqueueDomainLit},
+    implication_graph::ImplicationGraph,
     lit::Lit,
-    storage::Indexer,
-    Conflict,
+    search_tree::SearchTree,
+    storage::{Indexer, StaticIndexer},
+    trail::Trail,
 };
 pub use queue::*;
 pub use reason::*;
@@ -55,19 +57,28 @@ pub trait Propagator<Domains, Event> {
 }
 
 pub struct Context<'a, Domains, Event> {
-    assignment: &'a Assignment,
+    assignment: &'a mut Assignment,
+    trail: &'a mut Trail,
+    implication_graph: &'a mut ImplicationGraph,
     domains: &'a mut Domains,
+    search_tree: &'a mut SearchTree,
     event: PhantomData<Event>,
 }
 
 impl<Domains, Event> Context<'_, Domains, Event> {
     pub fn new<'a>(
-        assignment: &'a Assignment,
+        assignment: &'a mut Assignment,
+        trail: &'a mut Trail,
+        implication_graph: &'a mut ImplicationGraph,
+        search_tree: &'a mut SearchTree,
         domains: &'a mut Domains,
     ) -> Context<'a, Domains, Event> {
         Context {
             assignment,
+            trail,
+            implication_graph,
             domains,
+            search_tree,
             event: PhantomData,
         }
     }
@@ -76,8 +87,22 @@ impl<Domains, Event> Context<'_, Domains, Event> {
         self.assignment.value(lit.variable)
     }
 
-    pub fn assign(&mut self, _lit: PropagatorVar<Lit>, _value: bool) -> Result<(), Conflict> {
-        todo!()
+    pub fn assign(
+        &mut self,
+        lit: PropagatorVar<Lit>,
+        value: bool,
+        explanation: impl Into<Explanation>,
+    ) -> Result<(), Conflict> {
+        let lit = if value { lit.variable } else { !lit.variable };
+
+        let mut enqueue_lit = PropositionalState {
+            assignment: self.assignment,
+            trail: self.trail,
+            implication_graph: self.implication_graph,
+            search_tree: self.search_tree,
+        };
+
+        enqueue_lit.enqueue(lit, explanation.into())
     }
 
     pub fn read<Dom>(&self, domain_id: DomainId<Dom>) -> &Dom
@@ -87,11 +112,43 @@ impl<Domains, Event> Context<'_, Domains, Event> {
         &self.domains[domain_id]
     }
 
-    pub fn read_mut<Dom>(&mut self, domain_id: DomainId<Dom>) -> &mut Dom
+    pub fn read_mut<Dom>(
+        &mut self,
+        domain_id: DomainId<Dom>,
+    ) -> (&mut Dom, impl EnqueueDomainLit + '_)
     where
         Domains: DomainStore<Dom>,
     {
-        &mut self.domains[domain_id]
+        let enqueue_lit = PropositionalState {
+            assignment: self.assignment,
+            trail: self.trail,
+            implication_graph: self.implication_graph,
+            search_tree: self.search_tree,
+        };
+        (&mut self.domains[domain_id], enqueue_lit)
+    }
+}
+
+pub struct PropositionalState<'a> {
+    assignment: &'a mut Assignment,
+    trail: &'a mut Trail,
+    implication_graph: &'a mut ImplicationGraph,
+    search_tree: &'a mut SearchTree,
+}
+
+impl EnqueueDomainLit for PropositionalState<'_> {
+    fn enqueue(&mut self, lit: Lit, explanation: Explanation) -> Result<(), Conflict> {
+        if self.assignment.value(lit) == Some(false) {
+            return Err(Conflict { lit, explanation });
+        }
+
+        self.trail.enqueue(lit);
+        self.implication_graph
+            .add(lit.var(), Reason::from_explanation(lit, explanation));
+        self.search_tree.register_assignment(lit);
+        self.assignment.assign(lit);
+
+        Ok(())
     }
 }
 
@@ -121,7 +178,7 @@ impl From<u32> for LocalId {
     }
 }
 
-pub trait SDomainEvent<Event>: Indexer + From<Event> + Copy {
+pub trait SDomainEvent<Event>: Indexer + StaticIndexer + From<Event> + Copy {
     fn is(self, evt: Event) -> bool;
 }
 

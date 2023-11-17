@@ -101,6 +101,8 @@ impl StaticIndexer for SolverEvent {
 }
 
 fn main() {
+    env_logger::init();
+
     let Some(bibd) = BIBD::parse() else {
         eprintln!("Usage: {} <v> <k> <l>", std::env::args().next().unwrap());
         return;
@@ -113,13 +115,16 @@ fn main() {
         .collect::<Box<[_]>>();
 
     // Constraint: Every row should sum to `bibd.row_sum`:
-    let row_sum = solver.new_domain(IntInterval::new(bibd.row_sum as Int, bibd.row_sum as Int));
+    let row_sum = solver.new_domain(IntInterval::factory(
+        bibd.row_sum as Int,
+        bibd.row_sum as Int,
+    ));
     for row in matrix.iter() {
         constraints::bool_lin_eq(&mut solver, row.clone(), row_sum.clone());
     }
 
     // Constraint: Every column should sum to `bibd.column_sum`:
-    let column_sum = solver.new_domain(IntInterval::new(
+    let column_sum = solver.new_domain(IntInterval::factory(
         bibd.column_sum as Int,
         bibd.column_sum as Int,
     ));
@@ -147,8 +152,8 @@ fn transpose<T: Clone>(matrix: &[Box<[T]>]) -> Box<[Box<[T]>]> {
     let mut transposed = vec![vec![]; matrix[0].len()];
 
     for col in 0..matrix[0].len() {
-        for row in 0..matrix.len() {
-            transposed[col].push(matrix[row][col].clone());
+        for row in matrix {
+            transposed[col].push(row[col].clone());
         }
     }
 

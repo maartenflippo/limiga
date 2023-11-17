@@ -5,16 +5,18 @@ use crate::{
     assignment::Assignment,
     brancher::Brancher,
     clause::{ClauseDb, ClauseRef},
-    domains::{DomainId, DomainStore},
+    domains::{
+        Conflict, DomainFactory, DomainId, DomainStore, GlobalDomainIdPool, UntypedDomainId,
+    },
     implication_graph::ImplicationGraph,
     lit::{Lit, Var},
     preprocessor::{ClausePreProcessor, PreProcessedClause},
     propagation::{
-        Context, LitWatch, Propagator, PropagatorFactory, PropagatorId, PropagatorQueue,
+        Context, LitWatch, Propagator, PropagatorFactory, PropagatorId, PropagatorQueue, Reason,
         VariableRegistrar, WatchList,
     },
     search_tree::SearchTree,
-    storage::{Arena, StaticIndexer},
+    storage::{Arena, Indexer, StaticIndexer},
     termination::Terminator,
     trail::Trail,
 };
@@ -23,6 +25,8 @@ pub struct Solver<SearchProc, Domains, Event> {
     brancher: SearchProc,
 
     domains: Domains,
+    domain_id_pool: GlobalDomainIdPool,
+
     preprocessor: ClausePreProcessor,
     analyzer: ConflictAnalyzer,
     clauses: ClauseDb,
@@ -44,6 +48,17 @@ pub trait ExtendSolver<Domains, Event> {
     fn add_propagator(&mut self, factory: impl PropagatorFactory<Domains, Event>) -> bool;
 }
 
+pub trait ExtendClausalSolver<Event> {
+    type NewLits<'a>: Iterator<Item = Lit>
+    where
+        Self: 'a;
+
+    fn new_lits(&mut self) -> Self::NewLits<'_>;
+    fn add_clause(&mut self, lits: impl IntoIterator<Item = Lit>);
+
+    fn add_domain_watch(&mut self, lit: Lit, event: Event);
+}
+
 #[derive(Default, PartialEq, Eq)]
 enum State {
     #[default]
@@ -60,6 +75,7 @@ where
         Solver {
             brancher,
             domains: Default::default(),
+            domain_id_pool: Default::default(),
             clauses: Default::default(),
             search_tree: Default::default(),
             state: Default::default(),
@@ -77,20 +93,40 @@ where
     }
 }
 
-impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event> {
-    pub fn new_domain<Domain>(&mut self, domain: Domain) -> DomainId<Domain>
+impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
+where
+    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    SearchProc: Brancher,
+{
+    pub fn new_domain<Factory>(&mut self, factory: Factory) -> DomainId<Factory::Domain>
     where
-        Domains: DomainStore<Domain>,
+        Factory: DomainFactory<Event>,
+        Domains: DomainStore<Factory::Domain>,
     {
-        self.domains.alloc(domain)
+        let global_id = self.domain_id_pool.next_id();
+        self.watch_list.grow_to_domain(global_id);
+
+        let domain = factory.create(&mut DomainFactoryContext {
+            solver: self,
+            untyped_domain_id: global_id,
+        });
+
+        self.domains.alloc(global_id, domain)
     }
 }
 
 impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug,
+    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
 {
+    pub fn new_lits(&mut self) -> NewLitIterator<'_, SearchProc, Domains, Event> {
+        NewLitIterator {
+            solver: self,
+            has_introduced_new_literal: false,
+        }
+    }
+
     pub fn add_clause(&mut self, lits: impl IntoIterator<Item = Lit>) {
         if self.state == State::ConflictAtRoot {
             return;
@@ -112,29 +148,22 @@ where
                 trace!("adding clause {lits:?} with id {clause_ref:?}");
 
                 let clause = &self.clauses[clause_ref];
-                self.watch_list[clause.head[0]].push(clause_ref.into());
-                self.watch_list[clause.head[1]].push(clause_ref.into());
+                self.watch_list[clause[0]].push(clause_ref.into());
+                self.watch_list[clause[1]].push(clause_ref.into());
                 return;
             }
 
             lits[0]
         };
 
-        if !self.enqueue(root_assignment, ClauseRef::default()) {
+        if !self.enqueue(root_assignment, Reason::Decision) {
             self.state = State::ConflictAtRoot;
         }
 
         trace!("adding clause [{root_assignment:?}] as assignment");
     }
 
-    pub fn new_lits(&mut self) -> impl Iterator<Item = Lit> + '_ {
-        NewLitIterator {
-            solver: self,
-            has_introduced_new_literal: false,
-        }
-    }
-
-    fn enqueue(&mut self, lit: Lit, reason: ClauseRef) -> bool {
+    fn enqueue(&mut self, lit: Lit, reason: Reason) -> bool {
         if let Some(false) = self.assignment.value(lit) {
             return false;
         }
@@ -143,13 +172,6 @@ where
         self.assignment.assign(lit);
         self.implication_graph.add(lit.var(), reason);
         self.search_tree.register_assignment(lit);
-
-        if reason != ClauseRef::default() {
-            assert_eq!(
-                lit, self.clauses[reason][0],
-                "Propagated literals should be the first literal in the clause."
-            );
-        }
 
         true
     }
@@ -164,8 +186,36 @@ where
         self.next_propagation_idx = self.trail.len();
     }
 
-    fn propagate(&mut self) -> Option<ClauseRef> {
+    fn propagate(&mut self) -> Result<(), ClauseRef> {
         trace!("propagating...");
+        self.propagate_propositional()?;
+
+        while let Some(propagator_id) = self.propagator_queue.pop() {
+            self.propagate_propagator(propagator_id)?;
+            self.propagate_propositional()?;
+        }
+
+        Ok(())
+    }
+
+    fn propagate_propagator(&mut self, propagator_id: PropagatorId) -> Result<(), ClauseRef> {
+        trace!("propagating propagator {propagator_id:?}...");
+        let propagator = &mut self.propagators[propagator_id];
+        let mut ctx = Context::new(
+            &mut self.assignment,
+            &mut self.trail,
+            &mut self.implication_graph,
+            &mut self.search_tree,
+            &mut self.domains,
+        );
+
+        propagator
+            .propagate(&mut ctx)
+            .map_err(|conflict| self.create_conflict_clause(conflict))
+    }
+
+    fn propagate_propositional(&mut self) -> Result<(), ClauseRef> {
+        trace!("propagating propositional trail...");
         while self.next_propagation_idx < self.trail.len() {
             let trail_lit = self.trail[self.next_propagation_idx];
             let false_lit = !trail_lit;
@@ -195,7 +245,12 @@ where
                         self.propagator_queue.push(propagator_id);
                         None
                     }
-                    LitWatch::DomainEvent { domain_id, event } => todo!(),
+                    LitWatch::DomainEvent { domain_id, event } => {
+                        self.watch_list[(domain_id, event)]
+                            .iter()
+                            .for_each(|watch| self.propagator_queue.push(watch.propagator_id));
+                        None
+                    }
                 };
 
                 if let Some(conflict) = conflict {
@@ -207,12 +262,12 @@ where
 
                     self.next_propagation_idx = self.trail.len();
 
-                    return Some(conflict);
+                    return Err(conflict);
                 }
             }
         }
 
-        None
+        Ok(())
     }
 
     fn propagate_clause(&mut self, clause_ref: ClauseRef, false_lit: Lit) -> bool {
@@ -221,33 +276,32 @@ where
             trace!("propagating clause {clause:?}");
 
             // Make sure the false literal is at position 1 in the clause.
-            if clause.head[0] == false_lit {
-                clause.head.swap(0, 1);
+            if clause[0] == false_lit {
+                clause.swap_head();
             }
 
             // If the 0th watch is true, then clause is already satisfied.
-            if self.assignment.value(clause.head[0]) == Some(true) {
+            if self.assignment.value(clause[0]) == Some(true) {
                 trace!("clause is satisfied because of 0th literal");
                 self.watch_list[false_lit].push(clause_ref.into());
                 return true;
             }
 
             // Look for a new literal to watch.
-            for tail_idx in 0..clause.tail.len() {
-                let candidate = clause.tail[tail_idx];
+            for idx in 2..clause.len() {
+                let candidate = clause[idx];
                 if self.assignment.value(candidate) != Some(false) {
                     trace!("found new watch literal {candidate:?}");
-                    clause.head[1] = candidate;
-                    clause.tail[tail_idx] = false_lit;
+                    clause.swap(1, idx);
 
-                    self.watch_list[clause.head[1]].push(clause_ref.into());
+                    self.watch_list[clause[1]].push(clause_ref.into());
                     return true;
                 }
             }
 
             // The clause is unit under the current assignment.
             self.watch_list[false_lit].push(clause_ref.into());
-            clause.head[0]
+            clause[0]
         };
 
         trace!(
@@ -255,14 +309,32 @@ where
             lit_to_propagate
         );
 
-        self.enqueue(lit_to_propagate, clause_ref)
+        self.enqueue(lit_to_propagate, clause_ref.into())
+    }
+
+    fn create_conflict_clause(&mut self, conflict: Conflict) -> ClauseRef {
+        assert_eq!(Some(false), self.assignment.value(conflict.lit));
+
+        let other_reason = self.implication_graph.reason(conflict.lit.var());
+
+        let mut lits = conflict.explanation.into_vec();
+
+        match other_reason {
+            Reason::Decision => {}
+            Reason::Clause(clause_ref) => lits.extend(self.clauses[*clause_ref].iter()),
+            Reason::Explanation(other_lits) => lits.extend(other_lits.iter()),
+        }
+
+        lits.iter_mut().for_each(|lit| *lit = !*lit);
+
+        self.clauses.add_explanation_clause(lits)
     }
 }
 
 impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug,
+    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
 {
     pub fn solve(&mut self, terminator: impl Terminator) -> SolveResult<'_> {
         if self.state == State::ConflictAtRoot {
@@ -271,7 +343,7 @@ where
 
         while !terminator.should_stop() {
             match self.propagate() {
-                Some(conflict) => {
+                Err(conflict) => {
                     trace!("conflict at dl {}", self.search_tree.depth());
 
                     if self.search_tree.is_at_root() {
@@ -281,7 +353,7 @@ where
                     let (literal_to_enqueue, reason, backjump_level) = {
                         let analysis = self.analyzer.analyze(
                             conflict,
-                            &self.clauses,
+                            &mut self.clauses,
                             &self.implication_graph,
                             &self.search_tree,
                             &self.trail,
@@ -289,9 +361,9 @@ where
                         );
 
                         let clause_ref = if analysis.learned_clause.len() > 1 {
-                            self.clauses.add_clause(analysis.learned_clause)
+                            self.clauses.add_clause(analysis.learned_clause).into()
                         } else {
-                            ClauseRef::default()
+                            Reason::Decision
                         };
 
                         (
@@ -311,14 +383,14 @@ where
                     self.brancher.on_conflict();
                 }
 
-                None => {
+                Ok(()) => {
                     self.trail.push();
                     self.search_tree.branch();
 
                     if let Some(decision) = self.brancher.next_decision(&self.assignment) {
                         trace!("decided {decision:?}");
                         assert!(
-                            self.enqueue(decision, ClauseRef::default()),
+                            self.enqueue(decision, Reason::Decision),
                             "decided already assigned literal"
                         );
                     } else {
@@ -364,6 +436,7 @@ impl<SearchProc, Domains, Event> ExtendSolver<Domains, Event>
 {
     fn add_propagator(&mut self, factory: impl PropagatorFactory<Domains, Event>) -> bool {
         let slot = self.propagators.new_ref();
+        self.propagator_queue.grow_to(slot.id());
         let mut variable_registrar = VariableRegistrar::new(slot.id(), &mut self.watch_list);
 
         let propagator = factory.create(&mut variable_registrar);
@@ -373,7 +446,44 @@ impl<SearchProc, Domains, Event> ExtendSolver<Domains, Event>
     }
 }
 
-struct NewLitIterator<'a, SearchProc, Domains, Event> {
+struct DomainFactoryContext<'a, SearchProc, Domains, Event> {
+    solver: &'a mut Solver<SearchProc, Domains, Event>,
+    untyped_domain_id: UntypedDomainId,
+}
+
+impl<SearchProc, Domains, Event> ExtendClausalSolver<Event>
+    for DomainFactoryContext<'_, SearchProc, Domains, Event>
+where
+    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    SearchProc: Brancher,
+{
+    type NewLits<'a> = NewLitIterator<'a, SearchProc, Domains, Event>
+    where
+        Self: 'a;
+
+    fn new_lits(&mut self) -> Self::NewLits<'_> {
+        self.solver.new_lits()
+    }
+
+    fn add_clause(&mut self, lits: impl IntoIterator<Item = Lit>) {
+        self.solver.add_clause(lits)
+    }
+
+    fn add_domain_watch(&mut self, lit: Lit, event: Event) {
+        self.solver.watch_list.add_lit_watch(
+            lit,
+            LitWatch::DomainEvent {
+                domain_id: self.untyped_domain_id,
+                event,
+            },
+        )
+    }
+}
+
+pub struct NewLitIterator<'a, SearchProc, Domains, Event>
+where
+    Event: StaticIndexer,
+{
     solver: &'a mut Solver<SearchProc, Domains, Event>,
     has_introduced_new_literal: bool,
 }
@@ -381,6 +491,7 @@ struct NewLitIterator<'a, SearchProc, Domains, Event> {
 impl<SearchProc, Domains, Event> Iterator for NewLitIterator<'_, SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
+    Event: StaticIndexer,
 {
     type Item = Lit;
 
@@ -396,7 +507,10 @@ where
     }
 }
 
-impl<SearchProc, Domains, Event> Drop for NewLitIterator<'_, SearchProc, Domains, Event> {
+impl<SearchProc, Domains, Event> Drop for NewLitIterator<'_, SearchProc, Domains, Event>
+where
+    Event: StaticIndexer,
+{
     fn drop(&mut self) {
         if self.has_introduced_new_literal {
             let last_var = Var::try_from(self.solver.next_var_code - 1)
@@ -405,7 +519,7 @@ impl<SearchProc, Domains, Event> Drop for NewLitIterator<'_, SearchProc, Domains
             self.solver.assignment.grow_to(last_var);
             self.solver.implication_graph.grow_to(last_var);
             self.solver.search_tree.grow_to(last_var);
-            self.solver.watch_list.grow_to(Lit::positive(last_var));
+            self.solver.watch_list.grow_to_lit(Lit::positive(last_var));
             self.solver.analyzer.grow_to(last_var);
         }
     }

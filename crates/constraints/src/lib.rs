@@ -4,7 +4,6 @@ use limiga_core::{
     lit::Lit,
     propagation::{DomainEvent, LitEvent, Watchable},
     solver::ExtendSolver,
-    variable::Variable,
 };
 
 mod bool_lin_leq;

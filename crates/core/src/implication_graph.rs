@@ -1,8 +1,8 @@
-use crate::{clause::ClauseRef, lit::Var, storage::KeyedVec};
+use crate::{lit::Var, propagation::Reason, storage::KeyedVec};
 
 #[derive(Default)]
 pub struct ImplicationGraph {
-    reasons: KeyedVec<Var, ClauseRef>,
+    reasons: KeyedVec<Var, Reason>,
 }
 
 impl ImplicationGraph {
@@ -11,12 +11,12 @@ impl ImplicationGraph {
     }
 
     /// Get the reason for the assignment of the given literal.
-    pub fn reason(&self, var: Var) -> ClauseRef {
-        self.reasons[var]
+    pub fn reason(&self, var: Var) -> &Reason {
+        &self.reasons[var]
     }
 
     /// Add a reason to the implication graph for the given literal.
-    pub fn add(&mut self, var: Var, reason: ClauseRef) {
+    pub fn add(&mut self, var: Var, reason: Reason) {
         self.reasons[var] = reason;
     }
 }

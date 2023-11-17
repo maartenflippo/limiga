@@ -1,13 +1,11 @@
 use limiga_core::{
-    domains::DomainStore,
+    domains::{Conflict, DomainStore},
     integer::{BoundedInt, BoundedIntVar, Int, IntEvent},
     lit::Lit,
     propagation::{
         Context, DomainEvent, LitEvent, LocalId, Propagator, PropagatorFactory, PropagatorVar,
-        Reason, VariableRegistrar, Watchable,
+        VariableRegistrar, Watchable,
     },
-    variable::Variable,
-    Conflict,
 };
 
 pub struct LinearBoolFactory<VY> {
@@ -72,13 +70,15 @@ where
         let true_lits = self
             .x
             .iter()
-            .filter(|&&x_i| ctx.value(x_i) == Some(true))
+            .filter(|&&x_i| {
+                println!("{:?}", ctx.value(x_i));
+                ctx.value(x_i) == Some(true)
+            })
             .map(|&x_i| x_i.variable)
             .collect::<Box<[_]>>();
         let fixed_true_count = true_lits.len() as Int;
 
-        self.y
-            .set_min(ctx, fixed_true_count, Reason::from_literals(&true_lits))?;
+        self.y.set_min(ctx, fixed_true_count, true_lits.as_ref())?;
 
         // If the number of fixed true literals equals the upper-bound of `self.y`, the remaining
         // literals can be fixed to false.
@@ -86,9 +86,13 @@ where
         // Note: at this point the number of fixed true literals cannot exceed the upper bound of
         // `self.y` because the previous propagation would have taken the error path.
         if fixed_true_count == self.y.max(ctx) {
+            let reason = std::iter::once(self.y.max_lit(ctx))
+                .chain(true_lits.iter().copied())
+                .collect::<Box<[_]>>();
+
             for &x_i in self.x.iter() {
                 if ctx.value(x_i).is_none() {
-                    ctx.assign(x_i, false)
+                    ctx.assign(x_i, false, reason.as_ref())
                         .expect("these assignments can all be made");
                 }
             }

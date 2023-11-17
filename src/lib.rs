@@ -6,6 +6,7 @@ use limiga_core::{
     brancher::{Brancher, VsidsBrancher},
     lit::{Lit, Var},
     solver::{Solution, SolveResult, Solver},
+    storage::{Indexer, StaticIndexer},
     termination::TimeBudget,
 };
 use limiga_dimacs::DimacsSink;
@@ -111,7 +112,7 @@ struct SolverSink<SearchProc, Domains, Event> {
 impl<SearchProc, Domains, Event> DimacsSink for SolverSink<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug,
+    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
 {
     fn add_clause(&mut self, lits: &[std::num::NonZeroI32]) {
         let lits = lits

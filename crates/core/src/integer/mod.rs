@@ -1,10 +1,10 @@
 pub mod interval_domain;
 
 use crate::{
-    domains::{Domain, DomainId, DomainStore},
-    propagation::{Context, Reason},
+    domains::{Conflict, Domain, DomainId, DomainStore, EnqueueDomainLit},
+    lit::Lit,
+    propagation::{Context, Explanation},
     variable::Variable,
-    Conflict,
 };
 
 /// The type of integer variables we support.
@@ -20,14 +20,25 @@ pub trait BoundedInt: Domain<ProducedEvent = IntEvent> {
     /// Get the upper bound of the domain.
     fn max(&self) -> Int;
 
+    /// Get the literal that asserts the current upper bound for this domain.
+    fn max_lit(&self) -> Lit;
+
     /// Tighten the lower bound of the domain to the new bound. If the given bound is smaller than
     /// the current lower bound, this is a no-op.
-    fn set_min(&mut self, bound: Int) -> Result<(), Conflict>;
+    fn set_min(
+        &mut self,
+        bound: Int,
+        explanation: Explanation,
+        enqueue_lit: impl EnqueueDomainLit,
+    ) -> Result<(), Conflict>;
 }
 
 pub trait BoundedIntVar<Domains, Event>: Variable {
     /// Get the upper bound of the domain.
     fn max(&self, ctx: &mut Context<Domains, Event>) -> Int;
+
+    /// Get the literal that asserts the current upper bound for this variable's domain.
+    fn max_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit;
 
     /// Tighten the lower bound of the domain to the new bound. If the given bound is smaller than
     /// the current lower bound, this is a no-op.
@@ -35,7 +46,7 @@ pub trait BoundedIntVar<Domains, Event>: Variable {
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        reason: Reason,
+        explanation: impl Into<Explanation>,
     ) -> Result<(), Conflict>;
 }
 
@@ -48,12 +59,17 @@ where
         ctx.read(self.clone()).max()
     }
 
+    fn max_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit {
+        ctx.read(self.clone()).max_lit()
+    }
+
     fn set_min(
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        _reason: Reason,
+        explanation: impl Into<Explanation>,
     ) -> Result<(), Conflict> {
-        ctx.read_mut(self.clone()).set_min(bound)
+        let (dom, enqueue_lit) = ctx.read_mut(self.clone());
+        dom.set_min(bound, explanation.into(), enqueue_lit)
     }
 }

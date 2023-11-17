@@ -7,6 +7,12 @@ pub trait Indexer {
     fn index(&self) -> usize;
 }
 
+impl Indexer for () {
+    fn index(&self) -> usize {
+        0
+    }
+}
+
 pub struct KeyedVec<Key, Value> {
     key: PhantomData<Key>,
     values: Vec<Value>,

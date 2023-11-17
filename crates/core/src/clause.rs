@@ -6,28 +6,43 @@ use std::{
 use crate::lit::Lit;
 
 pub struct LongClause {
-    pub head: [Lit; 2],
-    pub tail: Box<[Lit]>,
+    head: [Lit; 2],
+    lits: Box<[Lit]>,
 }
 
 impl LongClause {
     fn new(lits: impl AsRef<[Lit]>) -> LongClause {
         let lits = lits.as_ref();
-        let tail: Box<[Lit]> = lits[2..].to_vec().into();
 
         LongClause {
             head: [lits[0], lits[1]],
-            tail,
+            lits: lits.into(),
         }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Lit> {
-        self.head.iter().chain(self.tail.iter())
+        self.head.iter().chain(self.lits.iter())
+    }
+
+    pub fn lits(&self) -> &[Lit] {
+        &self.lits
     }
 
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.head.len() + self.tail.len()
+        self.head.len() + self.lits.len()
+    }
+
+    pub fn swap_head(&mut self) {
+        self.head.swap(0, 1);
+        self.lits.swap(0, 1);
+    }
+
+    pub fn swap(&mut self, idx1: usize, idx2: usize) {
+        self.lits.swap(idx1, idx2);
+
+        self.head[0] = self.lits[0];
+        self.head[1] = self.lits[1];
     }
 }
 
@@ -38,7 +53,7 @@ impl Index<usize> for LongClause {
         if index < self.head.len() {
             &self.head[index]
         } else {
-            &self.tail[index - self.head.len()]
+            &self.lits[index - self.head.len()]
         }
     }
 }
@@ -47,7 +62,7 @@ impl Debug for LongClause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{:?}, {:?}", self.head[0], self.head[1])?;
 
-        for lit in self.tail.iter() {
+        for lit in self.lits.iter() {
             write!(f, ", {lit:?}")?;
         }
 
@@ -60,12 +75,13 @@ impl Debug for LongClause {
 #[derive(Default)]
 pub struct ClauseDb {
     clauses: Vec<LongClause>,
+    explanation_clauses: Vec<ClauseRef>,
 }
 
 impl ClauseDb {
-    pub fn add_clause(&mut self, lits: &[Lit]) -> ClauseRef {
+    pub fn add_clause(&mut self, lits: impl AsRef<[Lit]>) -> ClauseRef {
         assert!(
-            lits.len() > 1,
+            lits.as_ref().len() > 1,
             "The clause db cannot add the empty clause or a unit clause."
         );
 
@@ -73,6 +89,13 @@ impl ClauseDb {
         self.clauses.push(clause);
 
         ClauseRef(self.clauses.len() as u32 - 1)
+    }
+
+    pub fn add_explanation_clause(&mut self, lits: impl AsRef<[Lit]>) -> ClauseRef {
+        let clause_ref = self.add_clause(lits);
+        self.explanation_clauses.push(clause_ref);
+
+        clause_ref
     }
 }
 

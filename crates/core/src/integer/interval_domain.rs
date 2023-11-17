@@ -87,11 +87,6 @@ impl BoundedInt for IntInterval {
         explanation: Explanation,
         mut enqueue_lit: impl EnqueueDomainLit,
     ) -> Result<(), Conflict> {
-        println!(
-            "updating lb from {} to {bound} (ub = {})",
-            self.lower_bound, self.upper_bound
-        );
-
         if bound > self.lower_bound {
             enqueue_lit.enqueue(self.literal(bound), explanation)?;
             self.lower_bound = bound;

@@ -70,10 +70,7 @@ where
         let true_lits = self
             .x
             .iter()
-            .filter(|&&x_i| {
-                println!("{:?}", ctx.value(x_i));
-                ctx.value(x_i) == Some(true)
-            })
+            .filter(|&&x_i| ctx.value(x_i) == Some(true))
             .map(|&x_i| x_i.variable)
             .collect::<Box<[_]>>();
         let fixed_true_count = true_lits.len() as Int;

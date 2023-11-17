@@ -360,6 +360,8 @@ where
                             &mut self.brancher,
                         );
 
+                        trace!("learned clause {:?}", analysis.learned_clause);
+
                         let clause_ref = if analysis.learned_clause.len() > 1 {
                             self.clauses.add_clause(analysis.learned_clause).into()
                         } else {

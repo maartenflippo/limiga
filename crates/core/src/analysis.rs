@@ -41,7 +41,7 @@ impl ConflictAnalyzer {
 
     pub fn analyze<SearchProc: Brancher>(
         &mut self,
-        mut confl: ClauseRef,
+        confl: ClauseRef,
         clauses: &mut ClauseDb,
         implication_graph: &ImplicationGraph,
         search_tree: &SearchTree,
@@ -51,15 +51,15 @@ impl ConflictAnalyzer {
         self.current_level_count = 0;
         self.buffer.clear();
 
+        // Add the literals of the current confl to the buffer. Care is taken to avoid adding
+        // duplicate literals.
+        for p in clauses[confl].iter() {
+            self.add_literal(*p, search_tree, brancher);
+        }
+
         // Resolve the clause in self.buffer until only one literal remains from the current
         // decision level.
         for lit in trail.iter().rev() {
-            // Add the literals of the current confl to the buffer. Care is taken to avoid adding
-            // duplicate literals.
-            for p in clauses[confl].iter() {
-                self.add_literal(*p, search_tree, brancher);
-            }
-
             assert!(
                 self.current_level_count > 0,
                 "At least one literal has to have been assigned at the current decision level."
@@ -89,12 +89,24 @@ impl ConflictAnalyzer {
                 break;
             }
 
-            // Add the reason of the propagated literal to the clause.
-            confl = match implication_graph.reason(lit.var()) {
+            // Add the reason of the propagated literal to the clause. Since we are traversing the
+            // trail in reverse order, and there is at least one more literal on the trail that was
+            // assigned at the current decision level, the current literal *MUST* have been
+            // propagated.
+            let reason = match implication_graph.reason(lit.var()) {
                 Reason::Decision => unreachable!(),
-                Reason::Clause(clause_ref) => *clause_ref,
-                Reason::Explanation(lits) => clauses.add_explanation_clause(lits),
+                Reason::Clause(clause_ref) => clauses[*clause_ref].lits(),
+                Reason::Explanation(lits) => lits,
             };
+
+            assert_eq!(
+                lit, reason[0],
+                "the propagated literal is at the first position in the clause"
+            );
+
+            for p in reason.iter().skip(1) {
+                self.add_literal(*p, search_tree, brancher);
+            }
         }
 
         self.minimize_clause(clauses, implication_graph, search_tree);

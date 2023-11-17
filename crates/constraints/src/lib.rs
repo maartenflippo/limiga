@@ -1,9 +1,11 @@
 use limiga_core::{
+    brancher::Brancher,
     domains::DomainStore,
     integer::{BoundedInt, BoundedIntVar, IntEvent},
     lit::Lit,
     propagation::{DomainEvent, LitEvent, Watchable},
-    solver::ExtendSolver,
+    solver::{ExtendSolver, Solver},
+    storage::{Indexer, StaticIndexer},
 };
 
 mod bool_lin_leq;
@@ -36,4 +38,28 @@ where
     let neg_x = x.iter().map(|&x_i| !x_i).collect::<Box<[_]>>();
 
     bool_lin_leq(solver, x, y.clone()) && bool_lin_leq(solver, neg_x, y)
+}
+
+/// Post the constraint `(a /\ b) <-> r` in the clausal solver.
+pub fn bool_and<SearchProc, Domains, Event>(
+    solver: &mut Solver<SearchProc, Domains, Event>,
+    a: Lit,
+    b: Lit,
+    r: Lit,
+) -> bool
+where
+    SearchProc: Brancher,
+    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+{
+    // (a /\ b) -> r
+    // equiv (!a \/ !b \/ r)
+    solver.add_clause([!a, !b, r]);
+
+    // r -> (a /\ b)
+    // equiv (!r \/ (a /\ b))
+    // equiv (!r \/ a) /\ (!r \/ b)
+    solver.add_clause([!r, a]);
+    solver.add_clause([!r, b]);
+
+    true
 }

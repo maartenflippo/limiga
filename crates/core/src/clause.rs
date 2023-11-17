@@ -21,7 +21,7 @@ impl LongClause {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Lit> {
-        self.head.iter().chain(self.lits.iter())
+        self.lits.iter()
     }
 
     pub fn lits(&self) -> &[Lit] {
@@ -30,7 +30,7 @@ impl LongClause {
 
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
-        self.head.len() + self.lits.len()
+        self.lits.len()
     }
 
     pub fn swap_head(&mut self) {
@@ -53,7 +53,7 @@ impl Index<usize> for LongClause {
         if index < self.head.len() {
             &self.head[index]
         } else {
-            &self.lits[index - self.head.len()]
+            &self.lits[index]
         }
     }
 }

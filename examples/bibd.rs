@@ -25,7 +25,7 @@ struct BIBD {
     /// The value that every column in the matrix should sum to.
     column_sum: usize,
     // /// The maximum overlap between any distinct pair of rows.
-    // maximum_dot_product: u32,
+    maximum_dot_product: u32,
 }
 
 impl BIBD {
@@ -49,6 +49,7 @@ impl BIBD {
             columns: b,
             row_sum: r,
             column_sum: k,
+            maximum_dot_product: l as u32,
         })
     }
 }
@@ -130,6 +131,39 @@ fn main() {
     ));
     for row in transpose(&matrix).iter() {
         constraints::bool_lin_eq(&mut solver, row.clone(), column_sum.clone());
+    }
+
+    // Constraint: For every distinct pair of rows, the maximum overlap is
+    // `bibd.maximum_dot_product`.
+    let maximum_dot_product = solver.new_domain(IntInterval::factory(
+        bibd.maximum_dot_product as Int,
+        bibd.maximum_dot_product as Int,
+    ));
+
+    for row1 in 0..matrix.len() {
+        for row2 in (row1 + 1)..matrix.len() {
+            let mut is_overlapping = vec![];
+
+            for col in 0..matrix[0].len() {
+                let rows_overlap_in_col = solver.new_lits().next().unwrap();
+
+                // rows_overlap_in_col <-> (matrix[row1][col] & matrix[row2][col])
+                constraints::bool_and(
+                    &mut solver,
+                    matrix[row1][col],
+                    matrix[row2][col],
+                    rows_overlap_in_col,
+                );
+
+                is_overlapping.push(rows_overlap_in_col);
+            }
+
+            constraints::bool_lin_leq(
+                &mut solver,
+                is_overlapping.into(),
+                maximum_dot_product.clone(),
+            );
+        }
     }
 
     match solver.solve(Indefinite) {

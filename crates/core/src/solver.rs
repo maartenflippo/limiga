@@ -147,9 +147,7 @@ where
                 let clause_ref = self.clauses.add_clause(lits);
                 trace!("adding clause {lits:?} with id {clause_ref:?}");
 
-                let clause = &self.clauses[clause_ref];
-                self.watch_list[clause[0]].push(clause_ref.into());
-                self.watch_list[clause[1]].push(clause_ref.into());
+                self.watch_clause(clause_ref);
                 return;
             }
 
@@ -161,6 +159,13 @@ where
         }
 
         trace!("adding clause [{root_assignment:?}] as assignment");
+    }
+
+    fn watch_clause(&mut self, clause_ref: ClauseRef) {
+        trace!("setting up watchers for {clause_ref:?}");
+        let clause = &self.clauses[clause_ref];
+        self.watch_list[clause[0]].push(clause_ref.into());
+        self.watch_list[clause[1]].push(clause_ref.into());
     }
 
     fn enqueue(&mut self, lit: Lit, reason: Reason) -> bool {
@@ -272,12 +277,13 @@ where
 
     fn propagate_clause(&mut self, clause_ref: ClauseRef, false_lit: Lit) -> bool {
         let lit_to_propagate = {
+            let is_learned = self.clauses.is_learned(clause_ref);
             let clause = &mut self.clauses[clause_ref];
-            trace!("propagating clause {clause:?}");
+            trace!("propagating clause {clause:?} (is_learned: {is_learned})");
 
             // Make sure the false literal is at position 1 in the clause.
             if clause[0] == false_lit {
-                clause.swap_head();
+                clause.swap(0, 1);
             }
 
             // If the 0th watch is true, then clause is already satisfied.
@@ -353,7 +359,7 @@ where
                     let (literal_to_enqueue, reason, backjump_level) = {
                         let analysis = self.analyzer.analyze(
                             conflict,
-                            &mut self.clauses,
+                            &self.clauses,
                             &self.implication_graph,
                             &self.search_tree,
                             &self.trail,
@@ -363,7 +369,9 @@ where
                         trace!("learned clause {:?}", analysis.learned_clause);
 
                         let clause_ref = if analysis.learned_clause.len() > 1 {
-                            self.clauses.add_clause(analysis.learned_clause).into()
+                            self.clauses
+                                .add_learned_clause(analysis.learned_clause)
+                                .into()
                         } else {
                             Reason::Decision
                         };
@@ -374,6 +382,10 @@ where
                             analysis.backjump_level,
                         )
                     };
+
+                    if let Reason::Clause(clause_ref) = reason {
+                        self.watch_clause(clause_ref);
+                    }
 
                     self.backtrack_to(backjump_level);
 

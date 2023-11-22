@@ -1,3 +1,5 @@
+use log::trace;
+
 use crate::{
     brancher::Brancher,
     clause::{ClauseDb, ClauseRef},
@@ -42,7 +44,7 @@ impl ConflictAnalyzer {
     pub fn analyze<SearchProc: Brancher>(
         &mut self,
         confl: ClauseRef,
-        clauses: &mut ClauseDb,
+        clauses: &ClauseDb,
         implication_graph: &ImplicationGraph,
         search_tree: &SearchTree,
         trail: &Trail,
@@ -50,6 +52,15 @@ impl ConflictAnalyzer {
     ) -> Analysis {
         self.current_level_count = 0;
         self.buffer.clear();
+
+        trace!("conflict clause:    {:?}", clauses[confl].lits());
+        trace!(
+            "   decision levels: {:?}",
+            clauses[confl]
+                .iter()
+                .map(|lit| search_tree.decision_level(lit.var()))
+                .collect::<Vec<_>>()
+        );
 
         // Add the literals of the current confl to the buffer. Care is taken to avoid adding
         // duplicate literals.
@@ -129,6 +140,8 @@ impl ConflictAnalyzer {
             // Ensure the literal with the highest decision level is at index 1 of the learned clause.
             self.buffer.swap(1, idx);
         }
+
+        trace!("backtracing to {backjump_level}");
 
         Analysis {
             learned_clause: &self.buffer,

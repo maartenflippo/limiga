@@ -23,26 +23,6 @@ impl Reason {
 
         Reason::Explanation(lits.into())
     }
-
-    // pub fn to_vec(&self, clauses: &ClauseDb) -> Vec<Lit> {
-    //     match self {
-    //         Reason::Decision => vec![],
-    //         Reason::Clause(clause_ref) => clauses[*clause_ref].iter().copied().collect(),
-    //         Reason::Conjunction(lits) => lits.to_vec(),
-    //     }
-    // }
-
-    // pub fn to_clause(&mut self, clauses: &mut ClauseDb) -> ClauseRef {
-    //     match self {
-    //         Reason::Decision => unreachable!(),
-    //         Reason::Clause(clause_ref) => *clause_ref,
-    //         Reason::Conjunction(lits) => {
-    //             let clause_ref = clauses.add_explanation_clause(lits);
-    //             *self = Reason::Clause(clause_ref);
-    //             clause_ref
-    //         }
-    //     }
-    // }
 }
 
 impl From<ClauseRef> for Reason {

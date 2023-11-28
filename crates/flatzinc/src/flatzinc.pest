@@ -1,0 +1,19 @@
+model_item = { parameter_declaration }
+
+parameter_declaration = { parameter_type ~ ":" ~ identifier ~ "=" ~ parameter_expression ~ ";" }
+
+parameter_type = { "int" | "bool" }
+parameter_expression = { int_literal | bool_literal }
+
+int_literal = @{ 
+    ("-"? ~ ('0'..'9')+) |
+    ("-"? ~ "0x" ~ ('0'..'9' | 'A'..'F' | 'a'..'f')+) |
+    ("-"? ~ "0o" ~ ('0'..'7')+)
+}
+
+bool_literal = { "true" | "false" }
+
+identifier = @{ ('A'..'Z' | 'a'..'z' | "_") ~ ('A'..'Z' | 'a'..'z' | '0'..'9' | "_")* }
+
+WHITESPACE = _{ " " }
+

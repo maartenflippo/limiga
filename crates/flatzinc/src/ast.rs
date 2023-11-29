@@ -12,6 +12,7 @@ pub type Int = i64;
 #[derive(Debug, PartialEq, Eq)]
 pub enum ModelItem {
     Parameter(Parameter),
+    Variable(Variable),
 }
 
 /// A parameter declaration.
@@ -43,4 +44,27 @@ impl<'a> From<&'a str> for Identifier {
 pub enum Value {
     Int(Int),
     Bool(bool),
+    ArrayOfInt(Box<[Int]>),
+}
+
+/// A variable declaration.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Variable {
+    pub identifier: Identifier,
+    pub domain: Domain,
+}
+
+/// The domain of a variable.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Domain {
+    Int(IntDomain),
+    Bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum IntDomain {
+    /// Corresponds to variables declared with the unbounded 'int' type.
+    Unbounded,
+    /// An interval of integers, both bounds are inclusive.
+    Interval { lower: Int, upper: Int },
 }

@@ -47,18 +47,23 @@ pub enum Value {
     ArrayOfInt(Box<[Int]>),
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Variable {
+    IntVariable(SingleVariable<IntDomain>),
+    BoolVariable(SingleVariable<()>),
+    ArrayOfIntVariable(VariableArray<IntDomain>),
+    ArrayOfBoolVariable(VariableArray<BoolDomain>),
+}
+
 /// A variable declaration.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Variable {
+pub struct SingleVariable<Domain> {
     pub identifier: Identifier,
     pub domain: Domain,
 }
 
-/// The domain of a variable.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Domain {
-    Int(IntDomain),
-    Bool,
+pub trait Domain {
+    type Value;
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -67,4 +72,27 @@ pub enum IntDomain {
     Unbounded,
     /// An interval of integers, both bounds are inclusive.
     Interval { lower: Int, upper: Int },
+}
+
+impl Domain for IntDomain {
+    type Value = Int;
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct BoolDomain;
+
+impl Domain for BoolDomain {
+    type Value = bool;
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VariableArray<Dom: Domain> {
+    pub identifier: Identifier,
+    pub variables: Box<[IdentifierOr<Dom::Value>]>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum IdentifierOr<T> {
+    Identifier(Identifier),
+    Value(T),
 }

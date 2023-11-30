@@ -14,11 +14,17 @@ parameter_expression = {
 
 basic_parameter_type = { "int" | "bool" }
 
-variable_declaration = { variable_type ~ ":" ~ identifier ~ ";" }
+variable_declaration = { 
+    (variable_type ~ ":" ~ identifier ~ ";") |
+    "array" ~ "[" ~ index_set ~ "]" ~ "of" ~ variable_type ~ ":" ~ identifier ~ "=" ~ array_literal ~ ";"
+}
 variable_type = {
     ("var" ~ parameter_type) |
     ("var" ~ int_literal ~ ".." ~ int_literal)
 }
+
+array_literal = { "[" ~ basic_expression ~ ("," ~ basic_expression)* ~ "]" }
+basic_expression = { basic_literal_expression | identifier }
 
 basic_literal_expression = { int_literal | bool_literal }
 

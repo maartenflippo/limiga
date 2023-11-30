@@ -9,10 +9,10 @@ fn integer_variable_declaration() {
         .expect("empty source")
         .expect("invalid variable declaration");
 
-    let expected = ast::ModelItem::Variable(ast::Variable {
+    let expected = ast::ModelItem::Variable(ast::Variable::IntVariable(ast::SingleVariable {
         identifier: "SomeVar".into(),
-        domain: ast::Domain::Int(ast::IntDomain::Unbounded),
-    });
+        domain: ast::IntDomain::Unbounded,
+    }));
 
     assert_eq!(expected, ast);
 }
@@ -26,13 +26,36 @@ fn interval_integer_variable_declaration() {
         .expect("empty source")
         .expect("invalid variable declaration");
 
-    let expected = ast::ModelItem::Variable(ast::Variable {
+    let expected = ast::ModelItem::Variable(ast::Variable::IntVariable(ast::SingleVariable {
         identifier: "SomeVar".into(),
-        domain: ast::Domain::Int(ast::IntDomain::Interval {
+        domain: ast::IntDomain::Interval {
             lower: 1,
             upper: 10,
-        }),
-    });
+        },
+    }));
+
+    assert_eq!(expected, ast);
+}
+
+#[test]
+fn array_of_integer_variable_declaration() {
+    let source = "array [1..3] of var int: SomeArray = [SomeVar1, SomeVar2, 2];";
+
+    let ast = limiga_flatzinc::parse(source.as_bytes())
+        .next()
+        .expect("empty source")
+        .expect("invalid variable declaration");
+
+    let expected =
+        ast::ModelItem::Variable(ast::Variable::ArrayOfIntVariable(ast::VariableArray {
+            identifier: "SomeArray".into(),
+            variables: [
+                ast::IdentifierOr::Identifier("SomeVar1".into()),
+                ast::IdentifierOr::Identifier("SomeVar2".into()),
+                ast::IdentifierOr::Value(2),
+            ]
+            .into(),
+        }));
 
     assert_eq!(expected, ast);
 }
@@ -46,10 +69,33 @@ fn boolean_variable_declaration() {
         .expect("empty source")
         .expect("invalid variable declaration");
 
-    let expected = ast::ModelItem::Variable(ast::Variable {
+    let expected = ast::ModelItem::Variable(ast::Variable::BoolVariable(ast::SingleVariable {
         identifier: "SomeVar".into(),
-        domain: ast::Domain::Bool,
-    });
+        domain: (),
+    }));
+
+    assert_eq!(expected, ast);
+}
+
+#[test]
+fn array_of_boolean_variable_declaration() {
+    let source = "array [1..3] of var bool: SomeArray = [SomeVar1, SomeVar2, false];";
+
+    let ast = limiga_flatzinc::parse(source.as_bytes())
+        .next()
+        .expect("empty source")
+        .expect("invalid variable declaration");
+
+    let expected =
+        ast::ModelItem::Variable(ast::Variable::ArrayOfBoolVariable(ast::VariableArray {
+            identifier: "SomeArray".into(),
+            variables: [
+                ast::IdentifierOr::Identifier("SomeVar1".into()),
+                ast::IdentifierOr::Identifier("SomeVar2".into()),
+                ast::IdentifierOr::Value(false),
+            ]
+            .into(),
+        }));
 
     assert_eq!(expected, ast);
 }

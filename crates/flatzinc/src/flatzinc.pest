@@ -19,7 +19,7 @@ variable_declaration = {
     "array" ~ "[" ~ index_set ~ "]" ~ "of" ~ variable_type ~ ":" ~ identifier ~ "=" ~ array_literal ~ ";"
 }
 variable_type = {
-    ("var" ~ parameter_type) |
+    ("var" ~ basic_parameter_type) |
     ("var" ~ int_literal ~ ".." ~ int_literal)
 }
 

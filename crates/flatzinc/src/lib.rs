@@ -195,7 +195,7 @@ fn compile_domain(type_rule: Pair<'_, Rule>) -> Domain {
     let mut components = type_rule.into_inner();
     let first = components.next().expect("empty variable type");
 
-    if first.as_rule() == Rule::parameter_type {
+    if first.as_rule() == Rule::basic_parameter_type {
         match first.as_str() {
             "int" => Domain::Int(ast::IntDomain::Unbounded),
             "bool" => Domain::Bool,

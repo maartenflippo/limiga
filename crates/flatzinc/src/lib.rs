@@ -16,7 +16,7 @@ pub enum FznError {
     Io(#[from] io::Error),
 
     #[error("syntax error: {0}")]
-    Syntax(#[from] pest::error::Error<Rule>),
+    Syntax(#[from] Box<pest::error::Error<Rule>>),
 }
 
 /// Parse a flatzinc source into an AST. The parser operates under the assumption that each model
@@ -46,7 +46,7 @@ pub fn parse(source: impl Read) -> impl Iterator<Item = Result<ast::ModelItem, F
                     };
 
                     err.line_col = line_col;
-                    err
+                    Box::new(err)
                 })?
                 .next()
                 .expect("exactly one rule");

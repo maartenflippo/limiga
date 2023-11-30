@@ -1,3 +1,4 @@
+mod annotations;
 pub mod ast;
 
 use std::io::{self, BufRead, BufReader, Read};
@@ -118,10 +119,27 @@ fn compile_variable_array(
     let domain_rule = components
         .next()
         .expect("missing domain for variable array declaration");
+
     let identifier_rule = components
         .next()
         .expect("missing variable array identifier");
-    let array_rule = components.next().expect("missing array definition");
+
+    let next = components.next().expect("missing array definition");
+
+    let (annotations, array_rule): (Box<[ast::Annotation]>, Pair<'_, Rule>) = match next.as_rule() {
+        Rule::array_literal => ([].into(), next),
+        Rule::annotations => {
+            let annotations = compile_annotations(next);
+            let array_rule = components
+                .next()
+                .expect("missing array definition after annotations");
+            (annotations, array_rule)
+        }
+
+        _ => unreachable!(),
+    };
+
+    assert_eq!(Rule::array_literal, array_rule.as_rule());
 
     let domain = compile_domain(domain_rule);
     let identifier = compile_identifier(identifier_rule);
@@ -139,6 +157,7 @@ fn compile_variable_array(
                 ast::VariableArray {
                     identifier,
                     variables,
+                    annotations,
                 },
             )))
         }
@@ -154,9 +173,29 @@ fn compile_variable_array(
                 ast::Variable::ArrayOfBoolVariable(ast::VariableArray {
                     identifier,
                     variables,
+                    annotations,
                 }),
             ))
         }
+    }
+}
+
+fn compile_annotations(annotations_rule: Pair<'_, Rule>) -> Box<[ast::Annotation]> {
+    assert_eq!(Rule::annotations, annotations_rule.as_rule());
+
+    let mut components = annotations_rule.into_inner();
+
+    let identifier_rule = components
+        .next()
+        .expect("missing identifier for annotation");
+
+    match identifier_rule.as_str() {
+        "output_array" => {
+            let args = components.next().expect("missing args for output_array");
+            [annotations::compile_output_array_annotation(args)].into()
+        }
+
+        identifier => todo!("implement parsing for {identifier} annotation"),
     }
 }
 

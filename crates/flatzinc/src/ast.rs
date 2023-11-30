@@ -89,10 +89,16 @@ impl Domain for BoolDomain {
 pub struct VariableArray<Dom: Domain> {
     pub identifier: Identifier,
     pub variables: Box<[IdentifierOr<Dom::Value>]>,
+    pub annotations: Box<[Annotation]>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum IdentifierOr<T> {
     Identifier(Identifier),
     Value(T),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Annotation {
+    Output(Box<[usize]>),
 }

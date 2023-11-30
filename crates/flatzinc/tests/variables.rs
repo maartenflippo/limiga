@@ -55,6 +55,7 @@ fn array_of_integer_variable_declaration() {
                 ast::IdentifierOr::Value(2),
             ]
             .into(),
+            annotations: [].into(),
         }));
 
     assert_eq!(expected, ast);
@@ -95,6 +96,32 @@ fn array_of_boolean_variable_declaration() {
                 ast::IdentifierOr::Value(false),
             ]
             .into(),
+            annotations: [].into(),
+        }));
+
+    assert_eq!(expected, ast);
+}
+
+#[test]
+fn output_array_annotation_1d() {
+    let source =
+        "array [1..3] of var int: SomeArray :: output_array([1..3]) = [SomeVar1, SomeVar2, 2];";
+
+    let ast = limiga_flatzinc::parse(source.as_bytes())
+        .next()
+        .expect("empty source")
+        .expect("invalid variable declaration");
+
+    let expected =
+        ast::ModelItem::Variable(ast::Variable::ArrayOfIntVariable(ast::VariableArray {
+            identifier: "SomeArray".into(),
+            variables: [
+                ast::IdentifierOr::Identifier("SomeVar1".into()),
+                ast::IdentifierOr::Identifier("SomeVar2".into()),
+                ast::IdentifierOr::Value(2),
+            ]
+            .into(),
+            annotations: [ast::Annotation::Output([3].into())].into(),
         }));
 
     assert_eq!(expected, ast);

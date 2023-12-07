@@ -1,5 +1,6 @@
 mod annotations;
 pub mod ast;
+pub mod constraints;
 
 use std::io::{self, BufRead, BufReader, Read};
 
@@ -64,9 +65,41 @@ fn compile_model_item(model_item: Pair<Rule>) -> Result<ast::ModelItem, FznError
     match model_item.as_rule() {
         Rule::parameter_declaration => compile_parameter_declaration(model_item),
         Rule::variable_declaration => compile_variable_declaration(model_item),
+        Rule::constraint_declaration => compile_constraint_declaration(model_item),
+        Rule::goal => compile_goal(model_item),
 
         _ => unreachable!(),
     }
+}
+
+fn compile_goal(goal: Pair<'_, Rule>) -> Result<ast::ModelItem, FznError> {
+    assert_eq!(Rule::goal, goal.as_rule());
+
+    Ok(ast::ModelItem::Goal(ast::Goal::Satisfy))
+}
+
+fn compile_constraint_declaration(
+    constraint_declaration: Pair<'_, Rule>,
+) -> Result<ast::ModelItem, FznError> {
+    assert_eq!(
+        Rule::constraint_declaration,
+        constraint_declaration.as_rule()
+    );
+
+    let mut components = constraint_declaration.into_inner();
+    let identifier_rule = components
+        .next()
+        .expect("missing identifier in constraint declaration");
+
+    let constraint = match identifier_rule.as_str() {
+        "int_lin_ne" => {
+            let constraint = constraints::IntLinNe::parse(components)?;
+            ast::Constraint::IntLinNe(constraint)
+        }
+        unknown => unimplemented!("missing support for constraint '{unknown}'"),
+    };
+
+    Ok(ast::ModelItem::Constraint(constraint))
 }
 
 fn compile_variable_declaration(

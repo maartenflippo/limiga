@@ -1,5 +1,7 @@
 use std::{ops::Deref, rc::Rc};
 
+use crate::constraints;
+
 /// The integer type used.
 ///
 /// The FlatZinc specification does not specify what size integers we need to support, nor
@@ -13,6 +15,8 @@ pub type Int = i64;
 pub enum ModelItem {
     Parameter(Parameter),
     Variable(Variable),
+    Constraint(Constraint),
+    Goal(Goal),
 }
 
 /// A parameter declaration.
@@ -101,4 +105,14 @@ pub enum IdentifierOr<T> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Annotation {
     Output(Box<[usize]>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Constraint {
+    IntLinNe(constraints::IntLinNe),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Goal {
+    Satisfy,
 }

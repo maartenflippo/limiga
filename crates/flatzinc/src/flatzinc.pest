@@ -1,4 +1,4 @@
-model_item = { parameter_declaration | variable_declaration }
+model_item = { parameter_declaration | variable_declaration | constraint_declaration | goal }
 
 parameter_declaration = { parameter_type ~ ":" ~ identifier ~ "=" ~ parameter_expression ~ ";" }
 
@@ -23,8 +23,15 @@ variable_type = {
     ("var" ~ int_literal ~ ".." ~ int_literal)
 }
 
+constraint_declaration = { 
+    "constraint" ~ identifier ~ "(" ~ expression ~ ("," ~ expression)* ~ ")" ~ ";"
+}
+
 array_literal = { "[" ~ basic_expression ~ ("," ~ basic_expression)* ~ "]" }
 basic_expression = { basic_literal_expression | identifier }
+expression = { basic_expression | array_literal }
+
+goal = { "solve" ~ "satisfy" ~ ";" }
 
 annotations = { 
     "::" ~ identifier ~ ("(" ~ annotation_expression ~ ")")? 

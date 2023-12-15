@@ -178,7 +178,7 @@ impl From<u32> for LocalId {
     }
 }
 
-pub trait SDomainEvent<Event>: Indexer + StaticIndexer + From<Event> + Copy {
+pub trait SDomainEvent<Event>: StaticIndexer + From<Event> + Copy {
     fn is(self, evt: Event) -> bool;
 }
 

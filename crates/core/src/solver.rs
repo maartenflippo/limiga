@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use log::trace;
 
 use crate::{
@@ -16,7 +18,7 @@ use crate::{
         VariableRegistrar, WatchList,
     },
     search_tree::SearchTree,
-    storage::{Arena, Indexer, StaticIndexer},
+    storage::{Arena, StaticIndexer},
     termination::Terminator,
     trail::Trail,
 };
@@ -95,7 +97,7 @@ where
 
 impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
-    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    Event: Copy + Debug + StaticIndexer,
     SearchProc: Brancher,
 {
     pub fn new_domain<Factory>(&mut self, factory: Factory) -> DomainId<Factory::Domain>
@@ -118,7 +120,7 @@ where
 impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    Event: Copy + Debug + StaticIndexer,
 {
     pub fn new_lits(&mut self) -> NewLitIterator<'_, SearchProc, Domains, Event> {
         NewLitIterator {
@@ -340,7 +342,7 @@ where
 impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    Event: Copy + Debug + StaticIndexer,
 {
     pub fn solve(&mut self, terminator: impl Terminator) -> SolveResult<'_> {
         if self.state == State::ConflictAtRoot {
@@ -468,7 +470,7 @@ struct DomainFactoryContext<'a, SearchProc, Domains, Event> {
 impl<SearchProc, Domains, Event> ExtendClausalSolver<Event>
     for DomainFactoryContext<'_, SearchProc, Domains, Event>
 where
-    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    Event: Copy + Debug + StaticIndexer,
     SearchProc: Brancher,
 {
     type NewLits<'a> = NewLitIterator<'a, SearchProc, Domains, Event>

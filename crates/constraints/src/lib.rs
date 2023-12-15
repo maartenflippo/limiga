@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use limiga_core::{
     brancher::Brancher,
     domains::DomainStore,
@@ -5,7 +7,7 @@ use limiga_core::{
     lit::Lit,
     propagation::{DomainEvent, LitEvent, Watchable},
     solver::{ExtendSolver, Solver},
-    storage::{Indexer, StaticIndexer},
+    storage::StaticIndexer,
 };
 
 mod bool_lin_leq;
@@ -49,7 +51,7 @@ pub fn bool_and<SearchProc, Domains, Event>(
 ) -> bool
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    Event: Copy + Debug + StaticIndexer,
 {
     // (a /\ b) -> r
     // equiv (!a \/ !b \/ r)

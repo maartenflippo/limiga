@@ -1,6 +1,15 @@
-use std::{fmt::Write, fs::File, num::NonZeroI32, path::Path, time::Duration};
+use std::{
+    fmt::{Debug, Write},
+    fs::File,
+    num::NonZeroI32,
+    path::Path,
+    time::Duration,
+};
 
-use crate::{error::LimigaError, termination::{OrTerminator, SignalTerminator}};
+use crate::{
+    error::LimigaError,
+    termination::{OrTerminator, SignalTerminator},
+};
 use limiga_core::{
     brancher::{Brancher, VsidsBrancher},
     lit::{Lit, Var},
@@ -100,7 +109,7 @@ struct SolverSink<SearchProc, Domains, Event> {
 impl<SearchProc, Domains, Event> DimacsSink for SolverSink<SearchProc, Domains, Event>
 where
     SearchProc: Brancher,
-    Event: Copy + std::fmt::Debug + StaticIndexer + Indexer,
+    Event: Copy + Debug + StaticIndexer,
 {
     fn add_clause(&mut self, lits: &[std::num::NonZeroI32]) {
         let lits = lits

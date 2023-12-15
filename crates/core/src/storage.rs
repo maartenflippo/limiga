@@ -131,7 +131,7 @@ impl<Id: Indexer, Value> IndexMut<Id> for Arena<Id, Value> {
     }
 }
 
-pub trait StaticIndexer {
+pub trait StaticIndexer: Indexer {
     fn get_len() -> usize;
 }
 

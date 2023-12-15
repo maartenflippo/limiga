@@ -1,3 +1,5 @@
+mod error;
+
 use std::{io::Write, path::PathBuf, process::ExitCode, time::Duration};
 
 use clap::Parser;
@@ -22,6 +24,7 @@ fn main() -> ExitCode {
 
     match cli.file.extension() {
         Some(ext) if ext == "cnf" => limiga::solve_cnf(cli.file, timeout),
+        Some(ext) if ext == "fzn" => limiga::solve_flatzinc(cli.file, timeout),
 
         Some(_) | None => {
             eprintln!(

@@ -270,6 +270,7 @@ dependencies = [
  "limiga-constraints",
  "limiga-core",
  "limiga-dimacs",
+ "limiga-flatzinc",
  "signal-hook",
  "thiserror",
 ]

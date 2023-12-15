@@ -1,6 +1,6 @@
 use std::{fmt::Write, fs::File, num::NonZeroI32, path::Path, time::Duration};
 
-use crate::termination::{OrTerminator, SignalTerminator};
+use crate::{error::LimigaError, termination::{OrTerminator, SignalTerminator}};
 use limiga_core::{
     brancher::{Brancher, VsidsBrancher},
     lit::{Lit, Var},
@@ -9,19 +9,9 @@ use limiga_core::{
     termination::TimeBudget,
 };
 use limiga_dimacs::DimacsSink;
-use thiserror::Error;
 
 pub struct Assignment {
     values: Box<[bool]>,
-}
-
-#[derive(Debug, Error)]
-pub enum LimigaError {
-    #[error("error reading file")]
-    Io(#[from] std::io::Error),
-
-    #[error("failed to parse dimacs")]
-    DimacsError(#[from] limiga_dimacs::DimacsParseError),
 }
 
 pub enum Conclusion {

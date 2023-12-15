@@ -16,6 +16,7 @@ env_logger = "0.10.0"
 limiga-core = { path = "crates/core" }
 limiga-constraints = { path = "crates/constraints" }
 limiga-dimacs = { path = "crates/dimacs" }
+limiga-flatzinc = { path = "crates/flatzinc" }
 signal-hook = "0.3.17"
 thiserror = { workspace = true }
 

@@ -1,6 +1,6 @@
 use std::{fs::File, num::NonZeroI32, path::PathBuf, time::Duration};
 
-use limiga::Conclusion;
+use limiga::sat::Conclusion;
 use limiga_dimacs::DimacsSink;
 
 const TEST_TIME_BUDGET: Duration = Duration::from_secs(30);
@@ -15,8 +15,8 @@ macro_rules! cnf_instance {
                 stringify!($name),
             ));
 
-            let result =
-                limiga::run_solver(&file, Some(TEST_TIME_BUDGET)).expect("failed to run solver");
+            let result = limiga::sat::run_solver(&file, Some(TEST_TIME_BUDGET))
+                .expect("failed to run solver");
 
             let instance = limiga_dimacs::parse_cnf(
                 File::open(file).expect("could not open instance file for checking"),
@@ -137,7 +137,7 @@ impl DimacsSink for SatInstance {
 }
 
 impl SatInstance {
-    fn assert_satisfied(&self, assignment: limiga::Assignment) {
+    fn assert_satisfied(&self, assignment: limiga::sat::Assignment) {
         for clause in &self.clauses {
             if !clause.iter().any(|&lit| assignment.value(lit)) {
                 panic!("unsatisfied clause");

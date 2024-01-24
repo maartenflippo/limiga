@@ -109,8 +109,7 @@ fn main() {
         return;
     };
 
-    let mut solver: Solver<_, TypedDomainStore<IntInterval>, SolverEvent> =
-        Solver::new(VsidsBrancher::new(0.99));
+    let mut solver: Solver<TypedDomainStore<IntInterval>, SolverEvent> = Solver::default();
     let matrix = (0..bibd.rows)
         .map(|_| solver.new_lits().take(bibd.columns).collect::<Box<[_]>>())
         .collect::<Box<[_]>>();
@@ -166,7 +165,8 @@ fn main() {
         }
     }
 
-    match solver.solve(Indefinite) {
+    let brancher = VsidsBrancher::new(0.99);
+    match solver.solve(Indefinite, brancher) {
         SolveResult::Satisfiable(solution) => {
             for row in matrix.iter() {
                 row.iter()

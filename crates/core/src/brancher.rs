@@ -5,8 +5,9 @@ use crate::{
 };
 
 pub trait Brancher {
-    /// Called when a new variable is created in the solver.
-    fn on_new_var(&mut self, var: Var);
+    /// Called when search starts. Given the variable with the largest code, to set up
+    /// datastructures that use a continuously indexed map (e.g. [`KeyedVec`]
+    fn initialize(&mut self, largest_var: Var);
 
     /// Called when the given variable is seen during conflict analysis. The variable in question
     /// is guaranteed to have been passed to [`on_new_var()`] before this is called.
@@ -43,6 +44,15 @@ impl VsidsBrancher {
             position: Default::default(),
             activity_increment: 1.0,
             decay,
+        }
+    }
+
+    fn reset_variable(&mut self, var: Var) {
+        if self.position[var].is_none() {
+            let position = self.heap.len();
+            self.position[var] = Some(position);
+            self.heap.push(var);
+            self.sift_up(position);
         }
     }
 
@@ -113,11 +123,14 @@ impl VsidsBrancher {
 }
 
 impl Brancher for VsidsBrancher {
-    fn on_new_var(&mut self, var: Var) {
-        self.activities.grow_to(var);
-        self.position.grow_to(var);
+    fn initialize(&mut self, largest_var: Var) {
+        self.activities.grow_to(largest_var);
+        self.position.grow_to(largest_var);
 
-        self.on_variable_unassigned(var);
+        for code in 0..=largest_var.code() {
+            let var = Var::try_from(code).expect("code is in a valid range");
+            self.reset_variable(var);
+        }
     }
 
     fn on_variable_activated(&mut self, var: Var) {
@@ -138,12 +151,7 @@ impl Brancher for VsidsBrancher {
     }
 
     fn on_variable_unassigned(&mut self, var: Var) {
-        if self.position[var].is_none() {
-            let position = self.heap.len();
-            self.position[var] = Some(position);
-            self.heap.push(var);
-            self.sift_up(position);
-        }
+        self.reset_variable(var);
     }
 
     fn next_decision(&mut self, assignment: &Assignment) -> Option<Lit> {

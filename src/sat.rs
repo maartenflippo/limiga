@@ -11,10 +11,10 @@ use crate::{
     termination::{OrTerminator, SignalTerminator},
 };
 use limiga_core::{
-    brancher::{Brancher, VsidsBrancher},
+    brancher::VsidsBrancher,
     lit::{Lit, Var},
     solver::{Solution, SolveResult, Solver},
-    storage::{Indexer, StaticIndexer},
+    storage::StaticIndexer,
     termination::TimeBudget,
 };
 use limiga_dimacs::DimacsSink;
@@ -41,7 +41,7 @@ pub fn run_solver(
     let signal_terminator = SignalTerminator::register();
     let terminator = OrTerminator::new(timer, signal_terminator);
 
-    let mut solver: Solver<_, (), ()> = Solver::new(VsidsBrancher::new(0.95));
+    let mut solver: Solver<(), ()> = Solver::default();
     let mut sink = limiga_dimacs::parse_cnf(file, |header| {
         let vars = solver
             .new_lits()
@@ -53,7 +53,8 @@ pub fn run_solver(
         SolverSink { solver, vars }
     })?;
 
-    match sink.solver.solve(terminator) {
+    let brancher = VsidsBrancher::new(0.95);
+    match sink.solver.solve(terminator, brancher) {
         SolveResult::Satisfiable(solution) => Ok(Conclusion::Satisfiable(solution.into())),
         SolveResult::Unsatisfiable => Ok(Conclusion::Unsatisfiable),
         SolveResult::Unknown => Ok(Conclusion::Unknown),
@@ -101,14 +102,13 @@ impl<'a> From<Solution<'a>> for Assignment {
     }
 }
 
-struct SolverSink<SearchProc, Domains, Event> {
-    solver: Solver<SearchProc, Domains, Event>,
+struct SolverSink<Domains, Event> {
+    solver: Solver<Domains, Event>,
     vars: Box<[Var]>,
 }
 
-impl<SearchProc, Domains, Event> DimacsSink for SolverSink<SearchProc, Domains, Event>
+impl<Domains, Event> DimacsSink for SolverSink<Domains, Event>
 where
-    SearchProc: Brancher,
     Event: Copy + Debug + StaticIndexer,
 {
     fn add_clause(&mut self, lits: &[std::num::NonZeroI32]) {

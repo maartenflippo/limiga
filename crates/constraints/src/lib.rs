@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 use limiga_core::{
-    brancher::Brancher,
     domains::DomainStore,
     integer::{BoundedInt, BoundedIntVar, IntEvent},
     lit::Lit,
@@ -43,14 +42,13 @@ where
 }
 
 /// Post the constraint `(a /\ b) <-> r` in the clausal solver.
-pub fn bool_and<SearchProc, Domains, Event>(
-    solver: &mut Solver<SearchProc, Domains, Event>,
+pub fn bool_and<Domains, Event>(
+    solver: &mut Solver<Domains, Event>,
     a: Lit,
     b: Lit,
     r: Lit,
 ) -> bool
 where
-    SearchProc: Brancher,
     Event: Copy + Debug + StaticIndexer,
 {
     // (a /\ b) -> r

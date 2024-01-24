@@ -23,9 +23,7 @@ use crate::{
     trail::Trail,
 };
 
-pub struct Solver<SearchProc, Domains, Event> {
-    brancher: SearchProc,
-
+pub struct Solver<Domains, Event> {
     domains: Domains,
     domain_id_pool: GlobalDomainIdPool,
 
@@ -68,14 +66,13 @@ enum State {
     ConflictAtRoot,
 }
 
-impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
+impl<Domains, Event> Default for Solver<Domains, Event>
 where
     Domains: Default,
     Event: StaticIndexer,
 {
-    pub fn new(brancher: SearchProc) -> Self {
+    fn default() -> Self {
         Solver {
-            brancher,
             domains: Default::default(),
             domain_id_pool: Default::default(),
             clauses: Default::default(),
@@ -95,10 +92,9 @@ where
     }
 }
 
-impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
+impl<Domains, Event> Solver<Domains, Event>
 where
     Event: Copy + Debug + StaticIndexer,
-    SearchProc: Brancher,
 {
     pub fn new_domain<Factory>(&mut self, factory: Factory) -> DomainId<Factory::Domain>
     where
@@ -117,12 +113,11 @@ where
     }
 }
 
-impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
+impl<Domains, Event> Solver<Domains, Event>
 where
-    SearchProc: Brancher,
     Event: Copy + Debug + StaticIndexer,
 {
-    pub fn new_lits(&mut self) -> NewLitIterator<'_, SearchProc, Domains, Event> {
+    pub fn new_lits(&mut self) -> NewLitIterator<'_, Domains, Event> {
         NewLitIterator {
             solver: self,
             has_introduced_new_literal: false,
@@ -183,10 +178,10 @@ where
         true
     }
 
-    fn backtrack_to(&mut self, decision_level: usize) {
+    fn backtrack_to(&mut self, decision_level: usize, brancher: &mut impl Brancher) {
         self.trail.backtrack_to(decision_level).for_each(|lit| {
             self.assignment.unassign(lit);
-            self.brancher.on_variable_unassigned(lit.var());
+            brancher.on_variable_unassigned(lit.var());
         });
 
         self.search_tree.cut(decision_level);
@@ -339,15 +334,30 @@ where
     }
 }
 
-impl<SearchProc, Domains, Event> Solver<SearchProc, Domains, Event>
+impl<Domains, Event> Solver<Domains, Event>
 where
-    SearchProc: Brancher,
     Event: Copy + Debug + StaticIndexer,
 {
-    pub fn solve(&mut self, terminator: impl Terminator) -> SolveResult<'_> {
+    pub fn solve(
+        &mut self,
+        terminator: impl Terminator,
+        mut brancher: impl Brancher,
+    ) -> SolveResult<'_> {
         if self.state == State::ConflictAtRoot {
             return SolveResult::Unsatisfiable;
         }
+
+        if self.next_var_code == 0 {
+            return SolveResult::Satisfiable(Solution {
+                assignment: &mut self.assignment,
+                next_new_var_code: self.next_var_code,
+            });
+        }
+
+        brancher.initialize(
+            Var::try_from(self.next_var_code - 1)
+                .expect("next_var_code should be one more than a valid variable"),
+        );
 
         while !terminator.should_stop() {
             match self.propagate() {
@@ -365,7 +375,7 @@ where
                             &self.implication_graph,
                             &self.search_tree,
                             &self.trail,
-                            &mut self.brancher,
+                            &mut brancher,
                         );
 
                         trace!("learned clause {:?}", analysis.learned_clause);
@@ -389,21 +399,21 @@ where
                         self.watch_clause(clause_ref);
                     }
 
-                    self.backtrack_to(backjump_level);
+                    self.backtrack_to(backjump_level, &mut brancher);
 
                     assert!(
                         self.enqueue(literal_to_enqueue, reason),
                         "conflicting asserting literal"
                     );
 
-                    self.brancher.on_conflict();
+                    brancher.on_conflict();
                 }
 
                 Ok(()) => {
                     self.trail.push();
                     self.search_tree.branch();
 
-                    if let Some(decision) = self.brancher.next_decision(&self.assignment) {
+                    if let Some(decision) = brancher.next_decision(&self.assignment) {
                         trace!("decided {decision:?}");
                         assert!(
                             self.enqueue(decision, Reason::Decision),
@@ -447,9 +457,7 @@ impl Solution<'_> {
     }
 }
 
-impl<SearchProc, Domains, Event> ExtendSolver<Domains, Event>
-    for Solver<SearchProc, Domains, Event>
-{
+impl<Domains, Event> ExtendSolver<Domains, Event> for Solver<Domains, Event> {
     fn add_propagator(&mut self, factory: impl PropagatorFactory<Domains, Event>) -> bool {
         let slot = self.propagators.new_ref();
         self.propagator_queue.grow_to(slot.id());
@@ -462,18 +470,16 @@ impl<SearchProc, Domains, Event> ExtendSolver<Domains, Event>
     }
 }
 
-struct DomainFactoryContext<'a, SearchProc, Domains, Event> {
-    solver: &'a mut Solver<SearchProc, Domains, Event>,
+struct DomainFactoryContext<'a, Domains, Event> {
+    solver: &'a mut Solver<Domains, Event>,
     untyped_domain_id: UntypedDomainId,
 }
 
-impl<SearchProc, Domains, Event> ExtendClausalSolver<Event>
-    for DomainFactoryContext<'_, SearchProc, Domains, Event>
+impl<Domains, Event> ExtendClausalSolver<Event> for DomainFactoryContext<'_, Domains, Event>
 where
     Event: Copy + Debug + StaticIndexer,
-    SearchProc: Brancher,
 {
-    type NewLits<'a> = NewLitIterator<'a, SearchProc, Domains, Event>
+    type NewLits<'a> = NewLitIterator<'a, Domains, Event>
     where
         Self: 'a;
 
@@ -496,17 +502,16 @@ where
     }
 }
 
-pub struct NewLitIterator<'a, SearchProc, Domains, Event>
+pub struct NewLitIterator<'a, Domains, Event>
 where
     Event: StaticIndexer,
 {
-    solver: &'a mut Solver<SearchProc, Domains, Event>,
+    solver: &'a mut Solver<Domains, Event>,
     has_introduced_new_literal: bool,
 }
 
-impl<SearchProc, Domains, Event> Iterator for NewLitIterator<'_, SearchProc, Domains, Event>
+impl<Domains, Event> Iterator for NewLitIterator<'_, Domains, Event>
 where
-    SearchProc: Brancher,
     Event: StaticIndexer,
 {
     type Item = Lit;
@@ -514,7 +519,6 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let var = Var::try_from(self.solver.next_var_code).expect("valid var code");
         let lit = Lit::positive(var);
-        self.solver.brancher.on_new_var(var);
 
         self.solver.next_var_code += 1;
         self.has_introduced_new_literal = true;
@@ -523,7 +527,7 @@ where
     }
 }
 
-impl<SearchProc, Domains, Event> Drop for NewLitIterator<'_, SearchProc, Domains, Event>
+impl<Domains, Event> Drop for NewLitIterator<'_, Domains, Event>
 where
     Event: StaticIndexer,
 {

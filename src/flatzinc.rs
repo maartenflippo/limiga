@@ -9,8 +9,8 @@ pub enum Conclusion {
 }
 
 pub fn run_solver(
-    path: impl AsRef<Path>,
-    timeout: Option<Duration>,
+    _path: impl AsRef<Path>,
+    _timeout: Option<Duration>,
 ) -> Result<Conclusion, LimigaError> {
     todo!()
 }

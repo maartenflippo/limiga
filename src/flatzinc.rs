@@ -1,24 +1,22 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, process::ExitCode, time::Duration};
 
-use crate::error::LimigaError;
-
-pub enum Conclusion {
-    Satisfiable(Assignment),
-    Unsatisfiable,
-    Unknown,
-}
-
-pub fn run_solver(
-    _path: impl AsRef<Path>,
-    _timeout: Option<Duration>,
-) -> Result<Conclusion, LimigaError> {
+pub fn solve(_path: impl AsRef<Path>, _timeout: Option<Duration>) -> ExitCode {
     todo!()
-}
-
-pub struct Assignment;
-
-impl Assignment {
-    pub fn print_output(&self) {
-        todo!()
-    }
+    // Ok(flatzinc::Conclusion::Satisfiable(assignment)) => {
+    //     assignment.print_output();
+    //     println!("----------");
+    //     ExitCode::SUCCESS
+    // }
+    // Ok(flatzinc::Conclusion::Unsatisfiable) => {
+    //     println!("=====UNSATISFIABLE=====");
+    //     ExitCode::SUCCESS
+    // }
+    // Ok(flatzinc::Conclusion::Unknown) => {
+    //     println!("=====UNKNOWN=====");
+    //     ExitCode::SUCCESS
+    // }
+    // Err(e) => {
+    //     eprintln!("Error: {e}");
+    //     ExitCode::FAILURE
+    // }
 }

@@ -7,7 +7,4 @@ pub enum LimigaError {
 
     #[error("failed to parse dimacs")]
     DimacsError(#[from] limiga_dimacs::DimacsParseError),
-
-    #[error("failed to parse flatzinc: {0}")]
-    FlatZincError(#[from] limiga_flatzinc::FznError),
 }

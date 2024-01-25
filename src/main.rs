@@ -24,7 +24,7 @@ fn main() -> ExitCode {
 
     match cli.file.extension() {
         Some(ext) if ext == "cnf" => limiga::solve_cnf(cli.file, timeout),
-        Some(ext) if ext == "fzn" => limiga::solve_flatzinc(cli.file, timeout),
+        Some(ext) if ext == "fzn" => limiga::flatzinc::solve(cli.file, timeout),
 
         Some(_) | None => {
             eprintln!(

@@ -94,8 +94,8 @@ impl Assignment {
     }
 }
 
-impl<'a> From<Solution<'a>> for Assignment {
-    fn from(solution: Solution<'a>) -> Self {
+impl<'a, Domains> From<Solution<'a, Domains>> for Assignment {
+    fn from(solution: Solution<'a, Domains>) -> Self {
         let values = solution.vars().map(|var| solution.value(var)).collect();
 
         Assignment { values }

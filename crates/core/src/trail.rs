@@ -35,7 +35,7 @@ impl Trail {
         }
     }
 
-    pub fn iter(&self) -> impl DoubleEndedIterator + Iterator<Item = Lit> + '_ {
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = Lit> + '_ {
         self.trail.iter().copied()
     }
 }

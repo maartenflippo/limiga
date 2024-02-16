@@ -11,6 +11,7 @@ use crate::{
         Conflict, DomainFactory, DomainId, DomainStore, GlobalDomainIdPool, UntypedDomainId,
     },
     implication_graph::ImplicationGraph,
+    integer::{BoundedInt, Int},
     lit::{Lit, Var},
     preprocessor::{ClausePreProcessor, PreProcessedClause},
     propagation::{
@@ -342,7 +343,7 @@ where
         &mut self,
         terminator: impl Terminator,
         mut brancher: impl Brancher,
-    ) -> SolveResult<'_> {
+    ) -> SolveResult<'_, Domains> {
         if self.state == State::ConflictAtRoot {
             return SolveResult::Unsatisfiable;
         }
@@ -350,6 +351,7 @@ where
         if self.next_var_code == 0 {
             return SolveResult::Satisfiable(Solution {
                 assignment: &mut self.assignment,
+                domains: &self.domains,
                 next_new_var_code: self.next_var_code,
             });
         }
@@ -422,6 +424,7 @@ where
                     } else {
                         return SolveResult::Satisfiable(Solution {
                             assignment: &mut self.assignment,
+                            domains: &self.domains,
                             next_new_var_code: self.next_var_code,
                         });
                     }
@@ -433,23 +436,32 @@ where
     }
 }
 
-pub enum SolveResult<'solver> {
+pub enum SolveResult<'solver, Domains> {
     /// A solution has been found for the formula.
-    Satisfiable(Solution<'solver>),
+    Satisfiable(Solution<'solver, Domains>),
     /// No solution exists for the formula.
     Unsatisfiable,
     /// The solver was interrupted before reaching a conclusion.
     Unknown,
 }
 
-pub struct Solution<'assignment> {
+pub struct Solution<'assignment, Domains> {
     assignment: &'assignment mut Assignment,
+    domains: &'assignment Domains,
     next_new_var_code: u32,
 }
 
-impl Solution<'_> {
+impl<Domains> Solution<'_, Domains> {
     pub fn value(&self, var: Var) -> bool {
         self.assignment.value(Lit::positive(var)).unwrap()
+    }
+
+    pub fn domain_value<Dom>(&self, domain: DomainId<Dom>) -> Int
+    where
+        Domains: DomainStore<Dom>,
+        Dom: BoundedInt,
+    {
+        self.domains[domain].max()
     }
 
     pub fn vars(&self) -> impl Iterator<Item = Var> + '_ {

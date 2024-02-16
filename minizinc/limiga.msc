@@ -1,0 +1,11 @@
+{
+  "name" : "Limiga",
+  "version": "0.1.0",
+  "id": "com.maartenflippo.limiga",
+  "inputType": "JSON",
+  "executable": "../target/debug/limiga",
+  "mznlib": "./mznlib",
+  "stdFlags": [],
+  "extraFlags": []
+}
+

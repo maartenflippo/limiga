@@ -1,4 +1,5 @@
 pub mod interval_domain;
+pub mod affine_view;
 
 use crate::{
     domains::{Conflict, Domain, DomainId, DomainStore, EnqueueDomainLit},

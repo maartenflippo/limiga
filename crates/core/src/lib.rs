@@ -1,3 +1,5 @@
+#![feature(int_roundings)]
+
 pub mod analysis;
 pub mod assignment;
 pub mod brancher;

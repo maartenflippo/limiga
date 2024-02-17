@@ -3,14 +3,14 @@ use std::{
 };
 
 use flatzinc_serde::FlatZinc;
-use limiga_constraints::bool_lin_leq;
+use limiga_constraints::{bool_lin_leq, linear_leq};
 use limiga_core::{
     brancher::VsidsBrancher,
     domains::{DomainId, DomainStore, TypedDomainStore},
-    integer::{interval_domain::IntInterval, IntEvent},
+    integer::{interval_domain::IntInterval, Int, IntEvent},
     lit::Lit,
     propagation::{DomainEvent, LitEvent, SDomainEvent},
-    solver::{ExtendSolver, SolveResult, Solver},
+    solver::{SolveResult, Solver},
     storage::{Indexer, StaticIndexer},
     termination::TimeBudget,
 };
@@ -144,7 +144,7 @@ enum SolverVariable {
 fn create_variables<Domains>(
     ast: &FlatZinc,
     solver: &mut Solver<Domains, SolverEvent>,
-) -> Result<HashMap<String, SolverVariable>, Box<str>>
+) -> anyhow::Result<VariableMap>
 where
     Domains: DomainStore<IntInterval>,
 {
@@ -163,8 +163,8 @@ where
                         let lower_bound = *ranges.lower_bound().expect("non-empty domain");
                         let upper_bound = *ranges.upper_bound().expect("non-empty domain");
 
-                        let lower_bound = i32::try_from(lower_bound).map_err(|_| format!("the lower bound for {name} does not fit in a 32-bit signed integer"))?;
-                        let upper_bound = i32::try_from(upper_bound).map_err(|_| format!("the upper bound for {name} does not fit in a 32-bit signed integer"))?;
+                        let lower_bound = i32::try_from(lower_bound).map_err(|_| anyhow::anyhow!("the lower bound for {name} does not fit in a 32-bit signed integer"))?;
+                        let upper_bound = i32::try_from(upper_bound).map_err(|_| anyhow::anyhow!("the upper bound for {name} does not fit in a 32-bit signed integer"))?;
 
                         let domain =
                             solver.new_domain(IntInterval::factory(lower_bound, upper_bound));
@@ -173,29 +173,29 @@ where
                     }
 
                     flatzinc_serde::Domain::Float(_) => {
-                        return Err("float domains are not supported".into());
+                        anyhow::bail!("float domains are not supported");
                     }
                 },
 
-                None => return Err("unbounded integers are not supported".into()),
+                None => anyhow::bail!("unbounded integers are not supported"),
             },
 
             flatzinc_serde::Type::Float | flatzinc_serde::Type::IntSet => {
-                return Err("float and set domains are not supported".into());
+                anyhow::bail!("float and set domains are not supported");
             }
         };
 
         result.insert(name.into(), solver_variable);
     }
 
-    Ok(result)
+    Ok(VariableMap { map: result })
 }
 
 fn post_constraints<Domains, Event>(
     fzn: &FlatZinc,
-    variables: &HashMap<String, SolverVariable>,
-    solver: &mut impl ExtendSolver<Domains, Event>,
-) -> Result<(), Box<str>>
+    variables: &VariableMap,
+    solver: &mut Solver<Domains, Event>,
+) -> anyhow::Result<()>
 where
     Domains: DomainStore<IntInterval>,
     Event: DomainEvent<LitEvent, IntEvent>,
@@ -210,50 +210,173 @@ where
                         .arrays
                         .get(identifier)
                         .ok_or_else(|| {
-                            Box::from(format!("no array for identifier '{}'", constraint.id))
+                            anyhow::anyhow!("no array for identifier '{}'", constraint.id)
                         })?
                         .contents
                         .iter()
                         .map(|literal| match literal {
                             flatzinc_serde::Literal::Identifier(element_id) => {
-                                match variables.get(element_id).unwrap() {
-                                    SolverVariable::Int(_) => panic!("no domain id expected"),
-                                    SolverVariable::Bool(lit) => *lit,
-                                }
+                                variables.resolve_bool_variable(element_id).ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "could not resolve bool variable for {element_id}"
+                                    )
+                                })
                             }
 
-                            other => panic!("expected identifier, got {other:?}"),
+                            other => anyhow::bail!("expected an identifier, got {other:?}"),
                         })
-                        .collect(),
+                        .collect::<Result<_, _>>()?,
 
-                    other => return Err(format!("expected an identifier, got {other:?}").into()),
+                    other => anyhow::bail!("expected an identifier, got {other:?}"),
                 };
 
-                let y = match &constraint.args[2] {
-                    flatzinc_serde::Argument::Literal(literal) => match literal {
-                        flatzinc_serde::Literal::Identifier(identifier) => {
-                            match variables.get(identifier).unwrap() {
-                                SolverVariable::Bool(_) => panic!("no literal expected"),
-                                SolverVariable::Int(domain_id) => domain_id.clone(),
-                            }
-                        }
-
-                        other => panic!("expected identifier, got {other:?}"),
-                    },
-
-                    flatzinc_serde::Argument::Array(_) => {
-                        return Err("expected an identifier, got an array".into())
-                    }
-                };
+                let y = fzn.resolve_int_variable_argument(&constraint.args[2], variables)?;
 
                 bool_lin_leq(solver, x, y);
             }
 
+            "int_lin_le" => {
+                let terms =
+                    fzn.resolve_int_variable_array_argument(&constraint.args[1], variables)?;
+                let rhs = fzn.resolve_int_constant_argument(&constraint.args[2])?;
+
+                linear_leq(solver, terms, rhs);
+            }
+
             unsupported => {
-                return Err(format!("the constraint '{unsupported}' is not supported").into());
+                anyhow::bail!("the constraint '{unsupported}' is not supported")
             }
         }
     }
 
     Ok(())
+}
+
+struct VariableMap {
+    map: HashMap<String, SolverVariable>,
+}
+
+impl VariableMap {
+    fn iter(&self) -> std::collections::hash_map::Iter<'_, String, SolverVariable> {
+        self.map.iter()
+    }
+
+    fn resolve_bool_variable(&self, identifier: &str) -> Option<Lit> {
+        self.map
+            .get(identifier)
+            .and_then(|variable| match variable {
+                SolverVariable::Bool(lit) => Some(*lit),
+                SolverVariable::Int(_) => None,
+            })
+    }
+
+    fn resolve_int_variable(&self, identifier: &str) -> Option<DomainId<IntInterval>> {
+        self.map
+            .get(identifier)
+            .and_then(|variable| match variable {
+                SolverVariable::Bool(_) => None,
+                SolverVariable::Int(domain_id) => Some(domain_id.clone()),
+            })
+    }
+}
+
+trait AstExt {
+    fn get_ast(&self) -> &flatzinc_serde::FlatZinc;
+
+    fn resolve_int_constant_argument(
+        &self,
+        argument: &flatzinc_serde::Argument,
+    ) -> anyhow::Result<Int> {
+        match argument {
+            flatzinc_serde::Argument::Literal(literal) => match literal {
+                flatzinc_serde::Literal::Int(int) => Int::try_from(*int).map_err(|_| {
+                    anyhow::anyhow!("the value {int} does not fit into our integer representation")
+                }),
+                other => anyhow::bail!("expected int constant, got {other:?}"),
+            },
+
+            other => anyhow::bail!("expected int constant, got {other:?}"),
+        }
+    }
+
+    fn resolve_int_variable_argument(
+        &self,
+        argument: &flatzinc_serde::Argument,
+        variables: &VariableMap,
+    ) -> anyhow::Result<DomainId<IntInterval>> {
+        match argument {
+            flatzinc_serde::Argument::Literal(literal) => match literal {
+                flatzinc_serde::Literal::Identifier(identifier) => {
+                    variables.resolve_int_variable(identifier).ok_or_else(|| {
+                        anyhow::anyhow!("failed to resolve the integer variable for {identifier}")
+                    })
+                }
+
+                other => anyhow::bail!("expected identifier, got {other:?}"),
+            },
+
+            flatzinc_serde::Argument::Array(_) => {
+                anyhow::bail!("expected an identifier, got an array")
+            }
+        }
+    }
+
+    fn resolve_int_variable_array_argument(
+        &self,
+        argument: &flatzinc_serde::Argument,
+        variables: &VariableMap,
+    ) -> anyhow::Result<Box<[DomainId<IntInterval>]>> {
+        match argument {
+            flatzinc_serde::Argument::Literal(flatzinc_serde::Literal::Identifier(identifier)) => {
+                self.get_ast()
+                    .arrays
+                    .get(identifier)
+                    .ok_or_else(|| anyhow::anyhow!("no array for identifier '{identifier}'"))?
+                    .contents
+                    .iter()
+                    .map(|literal| match literal {
+                        flatzinc_serde::Literal::Identifier(element_id) => {
+                            variables.resolve_int_variable(element_id).ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "could not resolve integer variable for {element_id}"
+                                )
+                            })
+                        }
+
+                        other => anyhow::bail!("expected an identifier, got {other:?}"),
+                    })
+                    .collect::<anyhow::Result<_>>()
+            }
+
+            other => anyhow::bail!("expected an identifier, got {other:?}"),
+        }
+    }
+
+    fn resolve_bool_variable_argument(
+        &self,
+        argument: &flatzinc_serde::Argument,
+        variables: &VariableMap,
+    ) -> anyhow::Result<Lit> {
+        match argument {
+            flatzinc_serde::Argument::Literal(literal) => match literal {
+                flatzinc_serde::Literal::Identifier(identifier) => {
+                    variables.resolve_bool_variable(identifier).ok_or_else(|| {
+                        anyhow::anyhow!("failed to resolve the boolean variable for {identifier}")
+                    })
+                }
+
+                other => anyhow::bail!("expected identifier, got {other:?}"),
+            },
+
+            flatzinc_serde::Argument::Array(_) => {
+                anyhow::bail!("expected an identifier, got an array")
+            }
+        }
+    }
+}
+
+impl AstExt for flatzinc_serde::FlatZinc {
+    fn get_ast(&self) -> &flatzinc_serde::FlatZinc {
+        self
+    }
 }

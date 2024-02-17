@@ -24,6 +24,7 @@ impl IntInterval {
         }
     }
 
+    /// Get the literal corresponding to the atomic constraint `self <= value`.
     #[inline]
     fn literal(&self, value: Int) -> Lit {
         let idx = value
@@ -77,8 +78,16 @@ impl BoundedInt for IntInterval {
         self.upper_bound
     }
 
+    fn min(&self) -> Int {
+        self.lower_bound
+    }
+
     fn max_lit(&self) -> Lit {
-        self.literal(self.upper_bound)
+        !self.literal(self.upper_bound + 1)
+    }
+
+    fn min_lit(&self) -> Lit {
+        self.literal(self.lower_bound)
     }
 
     fn set_min(
@@ -90,6 +99,22 @@ impl BoundedInt for IntInterval {
         if bound > self.lower_bound {
             enqueue_lit.enqueue(self.literal(bound), explanation)?;
             self.lower_bound = bound;
+        }
+
+        assert!(self.lower_bound <= self.upper_bound);
+
+        Ok(())
+    }
+
+    fn set_max(
+        &mut self,
+        bound: Int,
+        explanation: Explanation,
+        mut enqueue_lit: impl EnqueueDomainLit,
+    ) -> Result<(), Conflict> {
+        if bound < self.upper_bound {
+            enqueue_lit.enqueue(!self.literal(bound + 1), explanation)?;
+            self.upper_bound = bound;
         }
 
         assert!(self.lower_bound <= self.upper_bound);

@@ -2,8 +2,8 @@ use limiga_core::{
     domains::{Conflict, DomainStore},
     integer::{BoundedInt, BoundedIntVar, Int, IntEvent},
     propagation::{
-        Context, DomainEvent, Propagator, PropagatorFactory, PropagatorVar, VariableRegistrar,
-        Watchable,
+        Context, DomainEvent, Explanation, Propagator, PropagatorFactory, PropagatorVar,
+        VariableRegistrar, Watchable,
     },
 };
 
@@ -52,12 +52,15 @@ where
     Var::Dom: BoundedInt,
     Domains: DomainStore<Var::Dom>,
 {
-    fn propagate(&mut self, ctx: &mut Context<Domains, Event>) -> Result<(), Conflict> {
+    fn propagate(&mut self, ctx: &mut Context<Domains, Event>) -> Result<(), Conflict<Domains>> {
         let optimistic_lhs = self.terms.iter().map(|term| term.min(ctx)).sum::<Int>();
         let mut explanation_base = self
             .terms
             .iter()
-            .map(|term| term.min_lit(ctx))
+            .map(|term| {
+                let bound = term.min(ctx);
+                term.lower_bound_atom(bound)
+            })
             .collect::<Vec<_>>();
 
         for (idx, term) in self.terms.iter().enumerate() {
@@ -66,7 +69,11 @@ where
 
             let min_lit = explanation_base.swap_remove(idx);
 
-            term.set_max(ctx, new_max, explanation_base.clone())?;
+            let explanation = explanation_base
+                .iter()
+                .map(|atom| atom.boxed_clone())
+                .collect::<Explanation<_>>();
+            term.set_max(ctx, new_max, explanation)?;
 
             explanation_base.push(min_lit);
             let len = explanation_base.len() - 1;

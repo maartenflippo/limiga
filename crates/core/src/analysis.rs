@@ -2,7 +2,8 @@ use log::trace;
 
 use crate::{
     brancher::Brancher,
-    clause::{ClauseDb, ClauseRef},
+    clause::ClauseDb,
+    domains::Conflict,
     implication_graph::ImplicationGraph,
     lit::{Lit, Var},
     propagation::Reason,
@@ -41,30 +42,33 @@ impl ConflictAnalyzer {
         self.seen.grow_to(var);
     }
 
-    pub fn analyze<SearchProc: Brancher>(
+    #[allow(clippy::too_many_arguments)]
+    pub fn analyze<Domains, SearchProc: Brancher>(
         &mut self,
-        confl: ClauseRef,
+        conflict: Conflict<Domains>,
         clauses: &ClauseDb,
-        implication_graph: &ImplicationGraph,
+        implication_graph: &ImplicationGraph<Domains>,
         search_tree: &SearchTree,
         trail: &Trail,
         brancher: &mut SearchProc,
+        domains: &Domains,
     ) -> Analysis {
         self.current_level_count = 0;
         self.buffer.clear();
 
-        trace!("conflict clause:    {:?}", clauses[confl].lits());
+        let lits = conflict.lits(clauses, domains);
+
+        trace!("conflict clause:    {:?}", lits);
         trace!(
             "   decision levels: {:?}",
-            clauses[confl]
-                .iter()
+            lits.iter()
                 .map(|lit| search_tree.decision_level(lit.var()))
                 .collect::<Vec<_>>()
         );
 
         // Add the literals of the current confl to the buffer. Care is taken to avoid adding
         // duplicate literals.
-        for p in clauses[confl].iter() {
+        for p in lits.iter() {
             self.add_literal(*p, search_tree, brancher);
         }
 
@@ -104,11 +108,9 @@ impl ConflictAnalyzer {
             // trail in reverse order, and there is at least one more literal on the trail that was
             // assigned at the current decision level, the current literal *MUST* have been
             // propagated.
-            let reason = match implication_graph.reason(lit.var()) {
-                Reason::Decision => unreachable!(),
-                Reason::Clause(clause_ref) => clauses[*clause_ref].lits(),
-                Reason::Explanation(lits) => lits,
-            };
+            let reason = implication_graph
+                .reason(lit.var())
+                .as_clause(clauses, domains);
 
             assert_eq!(
                 lit, reason[0],
@@ -120,7 +122,7 @@ impl ConflictAnalyzer {
             }
         }
 
-        self.minimize_clause(clauses, implication_graph, search_tree);
+        self.minimize_clause(clauses, implication_graph, search_tree, domains);
 
         // Reset the seen state for any variable we encountered during analysis.
         for var in self.to_clear.drain(..) {
@@ -168,11 +170,12 @@ impl ConflictAnalyzer {
         }
     }
 
-    fn minimize_clause(
+    fn minimize_clause<Domains>(
         &mut self,
         clauses: &ClauseDb,
-        implication_graph: &ImplicationGraph,
+        implication_graph: &ImplicationGraph<Domains>,
         search_tree: &SearchTree,
+        domains: &Domains,
     ) {
         // we always keep the first literal
         let mut idx = 0;
@@ -182,7 +185,7 @@ impl ConflictAnalyzer {
 
             let lit = self.buffer[idx];
 
-            if implication_graph.reason(lit.var()) == &Reason::Decision {
+            if matches!(implication_graph.reason(lit.var()), Reason::Decision) {
                 continue;
             }
 
@@ -194,20 +197,18 @@ impl ConflictAnalyzer {
             let top = self.to_clear.len();
 
             while let Some(lit) = self.stack.pop() {
-                let reason_lits = match implication_graph.reason(lit.var()) {
-                    Reason::Decision => unreachable!(),
-                    Reason::Clause(clause_ref) => clauses[*clause_ref].lits(),
-                    Reason::Explanation(lits) => lits,
-                };
+                let reason_lits = implication_graph
+                    .reason(lit.var())
+                    .as_clause(clauses, domains);
 
-                for &reason_lit in reason_lits {
+                for &reason_lit in reason_lits.iter() {
                     let reason_level = search_tree.decision_level(reason_lit.var());
 
                     if !self.seen[reason_lit.var()] && reason_level > 0 {
                         // We haven't established reason_lit to be redundant, haven't visited it yet and
                         // it's not implied by unit clauses.
 
-                        if implication_graph.reason(reason_lit.var()) == &Reason::Decision {
+                        if matches!(implication_graph.reason(reason_lit.var()), Reason::Decision) {
                             // reason_lit is a decision not in the clause
                             // Reset the var_flags set during _this_ DFS.
                             for var in self.to_clear.drain(top..) {

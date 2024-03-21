@@ -4,8 +4,9 @@ use limiga_core::{
     lit::Lit,
     propagation::{
         Context, DomainEvent, LitEvent, LocalId, Propagator, PropagatorFactory, PropagatorVar,
-        VariableRegistrar, Watchable,
-    },
+        VariableRegistrar, Watchable, Explanation,
+    }, 
+    atom::Atom,
 };
 
 pub struct LinearBoolFactory<VY> {
@@ -65,31 +66,32 @@ where
         true
     }
 
-    fn propagate(&mut self, ctx: &mut Context<Domains, Event>) -> Result<(), Conflict> {
+    fn propagate(&mut self, ctx: &mut Context<Domains, Event>) -> Result<(), Conflict<Domains>> {
         // The lower bound of `self.y` is the number of literals fixed to true in `x`.
         let true_lits = self
             .x
             .iter()
             .filter(|&&x_i| ctx.value(x_i) == Some(true))
-            .map(|&x_i| x_i.variable)
-            .collect::<Box<[_]>>();
+            .map(|&x_i| Box::new(x_i.variable) as Box<dyn Atom<Domains>>)
+            .collect::<Explanation<_>>();
         let fixed_true_count = true_lits.len() as Int;
 
-        self.y.set_min(ctx, fixed_true_count, true_lits.as_ref())?;
+        self.y.set_min(ctx, fixed_true_count, true_lits.clone())?;
 
         // If the number of fixed true literals equals the upper-bound of `self.y`, the remaining
         // literals can be fixed to false.
         //
         // Note: at this point the number of fixed true literals cannot exceed the upper bound of
         // `self.y` because the previous propagation would have taken the error path.
-        if fixed_true_count == self.y.max(ctx) {
-            let reason = std::iter::once(self.y.max_lit(ctx))
-                .chain(true_lits.iter().copied())
-                .collect::<Box<[_]>>();
+        let y_max = self.y.max(ctx);
+        if fixed_true_count == y_max {
+            let reason = std::iter::once(self.y.upper_bound_atom(y_max))
+                .chain(true_lits.iter().map(|atom| atom.boxed_clone()))
+                .collect::<Explanation<_>>();
 
             for &x_i in self.x.iter() {
                 if ctx.value(x_i).is_none() {
-                    ctx.assign(x_i, false, reason.as_ref())
+                    ctx.assign(x_i, false, reason.clone())
                         .expect("these assignments can all be made");
                 }
             }

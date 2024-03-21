@@ -31,7 +31,7 @@ pub struct Solver<Domains, Event> {
     preprocessor: ClausePreProcessor,
     analyzer: ConflictAnalyzer,
     clauses: ClauseDb,
-    implication_graph: ImplicationGraph,
+    implication_graph: ImplicationGraph<Domains>,
     search_tree: SearchTree,
     state: State,
     propagators: Arena<PropagatorId, Box<dyn Propagator<Domains, Event>>>,
@@ -166,7 +166,7 @@ where
         self.watch_list[clause[1]].push(clause_ref.into());
     }
 
-    fn enqueue(&mut self, lit: Lit, reason: Reason) -> bool {
+    fn enqueue(&mut self, lit: Lit, reason: Reason<Domains>) -> bool {
         if let Some(false) = self.assignment.value(lit) {
             return false;
         }
@@ -189,7 +189,7 @@ where
         self.next_propagation_idx = self.trail.len();
     }
 
-    fn propagate(&mut self) -> Result<(), ClauseRef> {
+    fn propagate(&mut self) -> Result<(), Conflict<Domains>> {
         trace!("propagating...");
         self.propagate_propositional()?;
 
@@ -201,7 +201,7 @@ where
         Ok(())
     }
 
-    fn propagate_propagator(&mut self, propagator_id: PropagatorId) -> Result<(), ClauseRef> {
+    fn propagate_propagator(&mut self, propagator_id: PropagatorId) -> Result<(), Conflict<Domains>> {
         trace!("propagating propagator {propagator_id:?}...");
         let propagator = &mut self.propagators[propagator_id];
         let mut ctx = Context::new(
@@ -212,12 +212,10 @@ where
             &mut self.domains,
         );
 
-        propagator
-            .propagate(&mut ctx)
-            .map_err(|conflict| self.create_conflict_clause(conflict))
+        propagator.propagate(&mut ctx)
     }
 
-    fn propagate_propositional(&mut self) -> Result<(), ClauseRef> {
+    fn propagate_propositional(&mut self) -> Result<(), Conflict<Domains>> {
         trace!("propagating propositional trail...");
         while self.next_propagation_idx < self.trail.len() {
             let trail_lit = self.trail[self.next_propagation_idx];
@@ -256,7 +254,7 @@ where
                     }
                 };
 
-                if let Some(conflict) = conflict {
+                if let Some(conflict_clause) = conflict {
                     // Copy the remaining watches back to the literal.
                     for &constraint in watches.iter().skip(i + 1) {
                         trace!("adding {constraint:?} to the watch list of {false_lit:?}");
@@ -265,7 +263,7 @@ where
 
                     self.next_propagation_idx = self.trail.len();
 
-                    return Err(conflict);
+                    return Err(conflict_clause.into());
                 }
             }
         }
@@ -315,24 +313,6 @@ where
 
         self.enqueue(lit_to_propagate, clause_ref.into())
     }
-
-    fn create_conflict_clause(&mut self, conflict: Conflict) -> ClauseRef {
-        assert_eq!(Some(false), self.assignment.value(conflict.lit));
-
-        let other_reason = self.implication_graph.reason(conflict.lit.var());
-
-        let mut lits = conflict.explanation.into_vec();
-
-        match other_reason {
-            Reason::Decision => {}
-            Reason::Clause(clause_ref) => lits.extend(self.clauses[*clause_ref].iter()),
-            Reason::Explanation(other_lits) => lits.extend(other_lits.iter()),
-        }
-
-        lits.iter_mut().for_each(|lit| *lit = !*lit);
-
-        self.clauses.add_explanation_clause(lits)
-    }
 }
 
 impl<Domains, Event> Solver<Domains, Event>
@@ -378,6 +358,7 @@ where
                             &self.search_tree,
                             &self.trail,
                             &mut brancher,
+                            &self.domains,
                         );
 
                         trace!("learned clause {:?}", analysis.learned_clause);

@@ -1,8 +1,7 @@
 use crate::{
     domains::Conflict,
-    lit::Lit,
     propagation::{Context, Explanation},
-    variable::Variable,
+    variable::Variable, atom::Atom, 
 };
 
 use super::{BoundedIntVar, Int};
@@ -63,20 +62,32 @@ where
         self.inner.min(ctx) * self.scale + self.offset
     }
 
-    fn max_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit {
-        self.inner.max_lit(ctx)
+    fn upper_bound_atom(&self, bound: Int) -> Box<dyn Atom<Domains>> {
+        if self.scale >= 0 {
+            let bound = Int::div_floor(bound - self.offset, self.scale);
+            self.inner.upper_bound_atom(bound)
+        } else {
+            let bound = Int::div_ceil(bound - self.offset, self.scale);
+            self.inner.lower_bound_atom(bound)
+        }
     }
 
-    fn min_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit {
-        self.inner.min_lit(ctx)
+    fn lower_bound_atom(&self, bound: Int) -> Box<dyn Atom<Domains>> {
+        if self.scale >= 0 {
+            let bound = Int::div_ceil(bound - self.offset, self.scale);
+            self.inner.lower_bound_atom(bound)
+        } else {
+            let bound = Int::div_floor(bound - self.offset, self.scale);
+            self.inner.upper_bound_atom(bound)
+        }
     }
 
     fn set_min(
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict> {
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>> {
         let bound = Int::div_ceil(bound - self.offset, self.scale);
 
         self.inner.set_min(ctx, bound, explanation)
@@ -86,8 +97,8 @@ where
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict> {
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>> {
         let bound = Int::div_floor(bound - self.offset, self.scale);
 
         self.inner.set_max(ctx, bound, explanation)

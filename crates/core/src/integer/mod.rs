@@ -1,12 +1,17 @@
-pub mod interval_domain;
 pub mod affine_view;
+pub mod atoms;
+mod binary_functions;
+pub mod interval_domain;
 
 use crate::{
+    atom::Atom,
     domains::{Conflict, Domain, DomainId, DomainStore, EnqueueDomainLit},
     lit::Lit,
     propagation::{Context, Explanation},
     variable::Variable,
 };
+
+use self::atoms::{AtLeast, AtMost};
 
 /// The type of integer variables we support.
 pub type Int = i32;
@@ -24,29 +29,29 @@ pub trait BoundedInt: Domain<ProducedEvent = IntEvent> {
     /// Get the lower bound of the domain.
     fn min(&self) -> Int;
 
-    /// Get the literal that asserts the current upper bound for this domain.
-    fn max_lit(&self) -> Lit;
+    /// Get the literal that asserts the given upper bound for this domain.
+    fn upper_bound_lit(&self, bound: Int) -> Lit;
 
-    /// Get the literal that asserts the current lower bound for this domain.
-    fn min_lit(&self) -> Lit;
+    /// Get the literal that asserts the given lower bound for this domain.
+    fn lower_bound_lit(&self, bound: Int) -> Lit;
 
     /// Tighten the lower bound of the domain to the new bound. If the given bound is smaller than
     /// the current lower bound, this is a no-op.
-    fn set_min(
+    fn set_min<Domains>(
         &mut self,
         bound: Int,
-        explanation: Explanation,
-        enqueue_lit: impl EnqueueDomainLit,
-    ) -> Result<(), Conflict>;
+        explanation: Explanation<Domains>,
+        enqueue_lit: impl EnqueueDomainLit<Domains>,
+    ) -> Result<(), Conflict<Domains>>;
 
     /// Tighten the upper bound of the domain to the new bound. If the given bound is larger than
     /// the current upper bound, this is a no-op.
-    fn set_max(
+    fn set_max<Domains>(
         &mut self,
         bound: Int,
-        explanation: Explanation,
-        enqueue_lit: impl EnqueueDomainLit,
-    ) -> Result<(), Conflict>;
+        explanation: Explanation<Domains>,
+        enqueue_lit: impl EnqueueDomainLit<Domains>,
+    ) -> Result<(), Conflict<Domains>>;
 }
 
 pub trait BoundedIntVar<Domains, Event>: Variable {
@@ -56,11 +61,11 @@ pub trait BoundedIntVar<Domains, Event>: Variable {
     /// Get the lower bound of the domain.
     fn min(&self, ctx: &mut Context<Domains, Event>) -> Int;
 
-    /// Get the literal that asserts the current upper bound for this variable's domain.
-    fn max_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit;
+    /// Get the atom asserting the given bound as the upper bound of this variable.
+    fn upper_bound_atom(&self, bound: Int) -> Box<dyn Atom<Domains>>;
 
-    /// Get the literal that asserts the current lower bound for this variable's domain.
-    fn min_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit;
+    /// Get the atom asserting the given bound as the lower bound of this variable.
+    fn lower_bound_atom(&self, bound: Int) -> Box<dyn Atom<Domains>>;
 
     /// Tighten the lower bound of the domain to the new bound. If the given bound is smaller than
     /// the current lower bound, this is a no-op.
@@ -68,8 +73,8 @@ pub trait BoundedIntVar<Domains, Event>: Variable {
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict>;
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>>;
 
     /// Tighten the upper bound of the domain to the new bound. If the given bound is larger than
     /// the current upper bound, this is a no-op.
@@ -77,8 +82,8 @@ pub trait BoundedIntVar<Domains, Event>: Variable {
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict>;
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>>;
 }
 
 impl<Dom, Domains, Event> BoundedIntVar<Domains, Event> for DomainId<Dom>
@@ -94,20 +99,20 @@ where
         ctx.read(self.clone()).min()
     }
 
-    fn max_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit {
-        ctx.read(self.clone()).max_lit()
+    fn upper_bound_atom(&self, bound: Int) -> Box<dyn Atom<Domains>> {
+        Box::new(AtMost { domain: self.clone(), bound })
     }
 
-    fn min_lit(&self, ctx: &mut Context<Domains, Event>) -> Lit {
-        ctx.read(self.clone()).min_lit()
+    fn lower_bound_atom(&self, bound: Int) -> Box<dyn Atom<Domains>> {
+        Box::new(AtLeast { domain: self.clone(), bound })
     }
 
     fn set_min(
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict> {
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>> {
         let (dom, enqueue_lit) = ctx.read_mut(self.clone());
         dom.set_min(bound, explanation.into(), enqueue_lit)
     }
@@ -116,8 +121,8 @@ where
         &self,
         ctx: &mut Context<Domains, Event>,
         bound: Int,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict> {
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>> {
         let (dom, enqueue_lit) = ctx.read_mut(self.clone());
         dom.set_max(bound, explanation.into(), enqueue_lit)
     }

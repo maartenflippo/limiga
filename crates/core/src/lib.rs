@@ -1,7 +1,9 @@
 #![feature(int_roundings)]
+#![feature(lint_reasons)]
 
 pub mod analysis;
 pub mod assignment;
+pub mod atom;
 pub mod brancher;
 pub mod clause;
 pub mod domains;

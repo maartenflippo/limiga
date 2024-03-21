@@ -1,9 +1,17 @@
 use std::{
+    borrow::Cow,
+    fmt::Debug,
     marker::PhantomData,
     ops::{Index, IndexMut},
 };
 
-use crate::{lit::Lit, propagation::Explanation, solver::ExtendClausalSolver, storage::Indexer};
+use crate::{
+    clause::{ClauseDb, ClauseRef},
+    lit::Lit,
+    propagation::Explanation,
+    solver::ExtendClausalSolver,
+    storage::Indexer,
+};
 
 /// A domain factory creates a variable domain, and links it to the appropriate literals in the
 /// solver.
@@ -17,15 +25,23 @@ pub trait Domain {
     type ProducedEvent;
 }
 
-pub trait EnqueueDomainLit {
-    fn enqueue(&mut self, lit: Lit, explanation: Explanation) -> Result<(), Conflict>;
+pub trait EnqueueDomainLit<Domains> {
+    fn enqueue(
+        &mut self,
+        lit: Lit,
+        explanation: Explanation<Domains>,
+    ) -> Result<(), Conflict<Domains>>;
 }
 
-impl<F> EnqueueDomainLit for F
+impl<F, Domains> EnqueueDomainLit<Domains> for F
 where
-    F: Fn(Lit, Explanation) -> Result<(), Conflict>,
+    F: Fn(Lit, Explanation<Domains>) -> Result<(), Conflict<Domains>>,
 {
-    fn enqueue(&mut self, lit: Lit, explanation: Explanation) -> Result<(), Conflict> {
+    fn enqueue(
+        &mut self,
+        lit: Lit,
+        explanation: Explanation<Domains>,
+    ) -> Result<(), Conflict<Domains>> {
         self(lit, explanation)
     }
 }
@@ -72,6 +88,12 @@ impl<Domain> Clone for DomainId<Domain> {
     }
 }
 
+impl<Domain> Debug for DomainId<Domain> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.untyped_id)
+    }
+}
+
 pub struct TypedDomainStore<Domain> {
     domains: Vec<Domain>,
 }
@@ -108,8 +130,50 @@ impl<Domain> IndexMut<DomainId<Domain>> for TypedDomainStore<Domain> {
     }
 }
 
-#[derive(Debug)]
-pub struct Conflict {
-    pub lit: Lit,
-    pub explanation: Explanation,
+pub enum Conflict<Domains> {
+    Clause(ClauseRef),
+    Propagator {
+        lit: Lit,
+        explanation: Explanation<Domains>,
+    },
+}
+
+impl<Domains> Conflict<Domains> {
+    pub fn lits<'clauses>(
+        &self,
+        clauses: &'clauses ClauseDb,
+        domains: &Domains,
+    ) -> Cow<'clauses, [Lit]> {
+        match self {
+            Conflict::Clause(clause_ref) => Cow::Borrowed(clauses[*clause_ref].lits()),
+            Conflict::Propagator { lit, explanation } => {
+                let mut clause = vec![*lit];
+                clause.extend(explanation.iter().map(|atom| !atom.as_lit(domains)));
+
+                Cow::Owned(clause)
+            }
+        }
+    }
+}
+
+impl<Domains> From<ClauseRef> for Conflict<Domains> {
+    fn from(clause: ClauseRef) -> Self {
+        Conflict::Clause(clause)
+    }
+}
+
+impl<Domains> Debug for Conflict<Domains> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Conflict::")?;
+
+        match self {
+            Conflict::Clause(clause_ref) => write!(f, "Clause({clause_ref:?})"),
+            Conflict::Propagator { lit, explanation } => {
+                write!(
+                    f,
+                    "Propagator {{ lit: {lit:?}, explanation: {explanation:?} }}"
+                )
+            }
+        }
+    }
 }

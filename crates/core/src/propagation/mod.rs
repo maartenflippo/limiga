@@ -53,13 +53,13 @@ pub trait Propagator<Domains, Event> {
     }
 
     /// Should remove as many values from the domains it is registered for as it can.
-    fn propagate(&mut self, ctx: &mut Context<Domains, Event>) -> Result<(), Conflict>;
+    fn propagate(&mut self, ctx: &mut Context<Domains, Event>) -> Result<(), Conflict<Domains>>;
 }
 
 pub struct Context<'a, Domains, Event> {
     assignment: &'a mut Assignment,
     trail: &'a mut Trail,
-    implication_graph: &'a mut ImplicationGraph,
+    implication_graph: &'a mut ImplicationGraph<Domains>,
     domains: &'a mut Domains,
     search_tree: &'a mut SearchTree,
     event: PhantomData<Event>,
@@ -69,7 +69,7 @@ impl<Domains, Event> Context<'_, Domains, Event> {
     pub fn new<'a>(
         assignment: &'a mut Assignment,
         trail: &'a mut Trail,
-        implication_graph: &'a mut ImplicationGraph,
+        implication_graph: &'a mut ImplicationGraph<Domains>,
         search_tree: &'a mut SearchTree,
         domains: &'a mut Domains,
     ) -> Context<'a, Domains, Event> {
@@ -91,8 +91,8 @@ impl<Domains, Event> Context<'_, Domains, Event> {
         &mut self,
         lit: PropagatorVar<Lit>,
         value: bool,
-        explanation: impl Into<Explanation>,
-    ) -> Result<(), Conflict> {
+        explanation: impl Into<Explanation<Domains>>,
+    ) -> Result<(), Conflict<Domains>> {
         let lit = if value { lit.variable } else { !lit.variable };
 
         let mut enqueue_lit = PropositionalState {
@@ -115,7 +115,7 @@ impl<Domains, Event> Context<'_, Domains, Event> {
     pub fn read_mut<Dom>(
         &mut self,
         domain_id: DomainId<Dom>,
-    ) -> (&mut Dom, impl EnqueueDomainLit + '_)
+    ) -> (&mut Dom, impl EnqueueDomainLit<Domains> + '_)
     where
         Domains: DomainStore<Dom>,
     {
@@ -129,22 +129,27 @@ impl<Domains, Event> Context<'_, Domains, Event> {
     }
 }
 
-pub struct PropositionalState<'a> {
+pub struct PropositionalState<'a, Domains> {
     assignment: &'a mut Assignment,
     trail: &'a mut Trail,
-    implication_graph: &'a mut ImplicationGraph,
+    implication_graph: &'a mut ImplicationGraph<Domains>,
     search_tree: &'a mut SearchTree,
 }
 
-impl EnqueueDomainLit for PropositionalState<'_> {
-    fn enqueue(&mut self, lit: Lit, explanation: Explanation) -> Result<(), Conflict> {
+impl<Domains> EnqueueDomainLit<Domains> for PropositionalState<'_, Domains> {
+    fn enqueue(&mut self, lit: Lit, explanation: Explanation<Domains>) -> Result<(), Conflict<Domains>> {
         if self.assignment.value(lit) == Some(false) {
-            return Err(Conflict { lit, explanation });
+            return Err(Conflict::Propagator { lit, explanation });
         }
 
         self.trail.enqueue(lit);
-        self.implication_graph
-            .add(lit.var(), Reason::from_explanation(lit, explanation));
+        self.implication_graph.add(
+            lit.var(),
+            Reason::Explanation {
+                propagated_lit: lit,
+                explanation,
+            },
+        );
         self.search_tree.register_assignment(lit);
         self.assignment.assign(lit);
 

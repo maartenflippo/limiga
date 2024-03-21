@@ -1,56 +1,98 @@
-use crate::{clause::ClauseRef, lit::Lit};
+use std::fmt::Debug;
+use std::{borrow::Cow, ops::Deref};
 
-#[derive(Debug, Default, PartialEq, Eq)]
-pub enum Reason {
+use crate::{
+    atom::Atom,
+    clause::{ClauseDb, ClauseRef},
+    lit::Lit,
+};
+
+#[derive(Debug, Default)]
+pub enum Reason<Domains> {
     #[default]
     Decision,
     Clause(ClauseRef),
-    Explanation(Box<[Lit]>),
+    Explanation {
+        /// The literal which was propagated.
+        propagated_lit: Lit,
+        /// The explanation for the propagation.
+        explanation: Explanation<Domains>,
+    },
 }
 
-impl Reason {
-    pub fn from_explanation(propagated_lit: Lit, explanation: Explanation) -> Reason {
-        let mut lits = explanation.0.into_vec();
+impl<Domains> Reason<Domains> {
+    pub fn as_clause<'clauses>(
+        &self,
+        clauses: &'clauses ClauseDb,
+        domains: &Domains,
+    ) -> Cow<'clauses, [Lit]> {
+        match self {
+            Reason::Decision => Cow::Owned([].into()),
+            Reason::Clause(clause_ref) => Cow::Borrowed(clauses[*clause_ref].lits()),
+            Reason::Explanation {
+                propagated_lit,
+                explanation,
+            } => {
+                let mut clause = vec![*propagated_lit];
+                clause.extend(explanation.iter().map(|atom| !atom.as_lit(domains)));
 
-        // The explanation is stored as the clause. This means applying De-Morgan on !explanation.
-        // This is why the propagated literal is pushed as the negated version.
-        lits.push(!propagated_lit);
-
-        let last_idx = lits.len() - 1;
-        lits.swap(0, last_idx);
-
-        lits.iter_mut().for_each(|lit| *lit = !*lit);
-
-        Reason::Explanation(lits.into())
+                Cow::Owned(clause)
+            }
+        }
     }
 }
 
-impl From<ClauseRef> for Reason {
+impl<Domains> From<ClauseRef> for Reason<Domains> {
     fn from(clause_ref: ClauseRef) -> Self {
         Reason::Clause(clause_ref)
     }
 }
 
-#[derive(Debug, Default, Eq)]
-pub struct Explanation(Box<[Lit]>);
+#[derive(Default)]
+pub struct Explanation<Domains>(Box<[Box<dyn Atom<Domains>>]>);
 
-impl PartialEq for Explanation {
-    fn eq(&self, other: &Self) -> bool {
-        self.0.len() == other.0.len() && self.0.iter().all(|lit| other.0.contains(lit))
+impl<Domains> Explanation<Domains> {
+    /// Get the number of atoms in the explanation.
+    #[allow(clippy::len_without_is_empty, reason = "explanations cannot be empty")]
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
-impl<LitSlice> From<LitSlice> for Explanation
+impl<Domains> Clone for Explanation<Domains> {
+    fn clone(&self) -> Self {
+        let atoms = self.0.iter().map(|atom| atom.boxed_clone()).collect();
+        Explanation(atoms)
+    }
+}
+
+impl<Domains> Debug for Explanation<Domains> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[")?;
+        self.0[0].fmt_debug(f)?;
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
+impl<Domains> FromIterator<Box<dyn Atom<Domains>>> for Explanation<Domains> {
+    fn from_iter<T: IntoIterator<Item = Box<dyn Atom<Domains>>>>(iter: T) -> Self {
+        let atoms = iter.into_iter().collect();
+        Explanation(atoms)
+    }
+}
+
+impl<Domains, LitSlice> From<LitSlice> for Explanation<Domains>
 where
-    LitSlice: Into<Box<[Lit]>>,
+    LitSlice: Into<Box<[Box<dyn Atom<Domains>>]>>,
 {
     fn from(value: LitSlice) -> Self {
         Explanation(value.into())
     }
 }
 
-impl Explanation {
-    pub fn into_vec(self) -> Vec<Lit> {
-        self.0.into_vec()
+impl<Domains> Explanation<Domains> {
+    pub fn iter(&self) -> impl Iterator<Item = &dyn Atom<Domains>> + '_ {
+        self.0.iter().map(|atom| atom.deref())
     }
 }

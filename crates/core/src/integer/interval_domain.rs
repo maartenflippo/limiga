@@ -82,20 +82,20 @@ impl BoundedInt for IntInterval {
         self.lower_bound
     }
 
-    fn max_lit(&self) -> Lit {
-        !self.literal(self.upper_bound + 1)
+    fn upper_bound_lit(&self, bound: Int) -> Lit {
+        !self.literal(bound + 1)
     }
 
-    fn min_lit(&self) -> Lit {
-        self.literal(self.lower_bound)
+    fn lower_bound_lit(&self, bound: Int) -> Lit {
+        self.literal(bound)
     }
 
-    fn set_min(
+    fn set_min<Domains>(
         &mut self,
         bound: Int,
-        explanation: Explanation,
-        mut enqueue_lit: impl EnqueueDomainLit,
-    ) -> Result<(), Conflict> {
+        explanation: Explanation<Domains>,
+        mut enqueue_lit: impl EnqueueDomainLit<Domains>,
+    ) -> Result<(), Conflict<Domains>> {
         if bound > self.lower_bound {
             enqueue_lit.enqueue(self.literal(bound), explanation)?;
             self.lower_bound = bound;
@@ -106,12 +106,12 @@ impl BoundedInt for IntInterval {
         Ok(())
     }
 
-    fn set_max(
+    fn set_max<Domains>(
         &mut self,
         bound: Int,
-        explanation: Explanation,
-        mut enqueue_lit: impl EnqueueDomainLit,
-    ) -> Result<(), Conflict> {
+        explanation: Explanation<Domains>,
+        mut enqueue_lit: impl EnqueueDomainLit<Domains>,
+    ) -> Result<(), Conflict<Domains>> {
         if bound < self.upper_bound {
             enqueue_lit.enqueue(!self.literal(bound + 1), explanation)?;
             self.upper_bound = bound;
